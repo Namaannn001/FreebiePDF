@@ -19,7 +19,11 @@ export function requireDist(...files) {
 }
 
 // Creates a temp dir under os.tmpdir() and returns it with a cleanup function.
+// Retries cover Chrome helper processes that write to the profile briefly after exit.
 export function tempDir(prefix = 'anywherepdf-test-') {
   const dir = mkdtempSync(join(tmpdir(), prefix));
-  return { dir, cleanup: () => rmSync(dir, { force: true, recursive: true }) };
+  return {
+    dir,
+    cleanup: () => rmSync(dir, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 }),
+  };
 }
