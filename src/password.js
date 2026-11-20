@@ -1,6 +1,7 @@
 export async function changePassword(file,{password='',text='',encrypt}){
   if(/\x00/.test(password+text))throw new Error('Passwords cannot contain a null character.');
   if(encrypt&&(!text||new TextEncoder().encode(text).length>127))throw new Error('Enter a new password between 1 and 127 UTF-8 bytes.');
+  if(encrypt&&/^[@-]/.test(text))throw new Error('The new password cannot start with @ or -.');
   const bytes=await file.arrayBuffer();
   const worker=new Worker(new URL('qpdf/worker.js',new URL(import.meta.env.BASE_URL,document.baseURI)));
   try{

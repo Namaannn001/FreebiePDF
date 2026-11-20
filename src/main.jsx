@@ -21,6 +21,140 @@ const load=(key,fallback)=>{
   } catch {return fallback;}
 };
 const store=(key,value)=>{try{localStorage.setItem(key,JSON.stringify(value));}catch{}};
+// Some browsers return no voices until 'voiceschanged' fires, so wait briefly for them.
+function speechVoices(){
+  const synth=window.speechSynthesis;
+  if(!synth)return Promise.resolve([]);
+  if(synth.getVoices().length)return Promise.resolve(synth.getVoices());
+  return new Promise(resolve=>{
+    const done=()=>{clearTimeout(timer);synth.removeEventListener('voiceschanged',done);resolve(synth.getVoices());};
+    const timer=setTimeout(done,2000);
+    synth.addEventListener('voiceschanged',done);
+  });
+}
+// Split text on sentence or word boundaries so each utterance stays well under Chrome's ~15s cutoff.
+function speechChunks(text,max=200){
+  const chunks=[];
+  for(let rest=text.trim();rest;){
+    if(rest.length<=max){chunks.push(rest);break;}
+    const head=rest.slice(0,max);
+    const sentence=[...head.matchAll(/[.!?]\s/g)].pop();
+    const space=head.search(/\s\S*$/);
+    const cut=sentence?sentence.index+1:space>0?space:max;
+    chunks.push(rest.slice(0,cut).trim());
+    rest=rest.slice(cut).trim();
+  }
+  return chunks;
+}
+export function offlineLabel(kind,onLine){
+  if(kind==='unsupported')return 'Browser processing';
+  if(!onLine)return 'Offline';
+  return kind==='ready'?'Ready offline':'Preparing offline cache';
+}
+export function confirmOfflineCache(worker,timeout=5000){
+  const id=crypto.randomUUID();
+  return new Promise(resolve=>{
+    const timer=setTimeout(finish,timeout,false);
+    function finish(ok){
+      clearTimeout(timer);
+      navigator.serviceWorker.removeEventListener('message',onMessage);
+      resolve(ok===true);
+    }
+    function onMessage(event){
+      if(event.data?.type!=='freebiepdf-cache-status'||event.data.id!==id)return;
+      finish(event.data.ok===true);
+    }
+    navigator.serviceWorker.addEventListener('message',onMessage);
+    try{worker.postMessage({type:'freebiepdf-cache-check',id});}
+    catch{finish(false);}
+  });
+}
+export function watchOffline(setState){
+  let cancel=false,generation=0;
+  const show=kind=>{if(!cancel)setState(offlineLabel(kind,navigator.onLine));};
+  async function confirm(){
+    const gen=++generation;
+    if(!('serviceWorker' in navigator)||!import.meta.env.PROD){show('unsupported');return;}
+    try{
+      const registration=await navigator.serviceWorker.register(new URL('./sw.js',document.baseURI));
+      await navigator.serviceWorker.ready;
+      if(cancel||gen!==generation)return;
+      const worker=navigator.serviceWorker.controller||registration.active;
+      if(!worker){show('preparing');return;}
+      const ready=await confirmOfflineCache(worker);
+      if(cancel||gen!==generation)return;
+      show(ready?'ready':'preparing');
+    }catch{if(!cancel&&gen===generation)show('unsupported');}
+  }
+  function offline(){if(!cancel)setState('Offline');}
+  confirm();
+  window.addEventListener('online',confirm);
+  window.addEventListener('offline',offline);
+  navigator.serviceWorker?.addEventListener('controllerchange',confirm);
+  return ()=>{
+    cancel=true;
+    window.removeEventListener('online',confirm);
+    window.removeEventListener('offline',offline);
+    navigator.serviceWorker?.removeEventListener('controllerchange',confirm);
+  };
+}
+// Only a voice with localService===true is used. Remote voices stay unused so playback works offline and audio is not sent off-device.
+export function beginReadAloud({text,voices,synth,Utterance,session,utterances,alive,onComplete,onStop}){
+  const local=(voices??[]).filter(voice=>voice.localService===true);
+  if(!synth||typeof Utterance!=='function'||!local.length)return {error:'No local speech voice is available on this device. Read aloud will not use a remote voice.'};
+  if(!String(text??'').trim())return {error:'This PDF has no searchable text to read aloud.'};
+  const voice=local.find(item=>item.lang?.toLowerCase().startsWith('en'))??local[0];
+  const id=session.current;
+  const parts=speechChunks(String(text));
+  const queued=parts.map((part,index)=>{
+    const utterance=new Utterance(part);
+    utterance.voice=voice;
+    utterance.onend=()=>{
+      if(session.current!==id)return;
+      const at=utterances.current.indexOf(utterance);
+      if(at>=0)utterances.current.splice(at,1);
+      if(index===parts.length-1&&alive())onComplete();
+    };
+    utterance.onerror=()=>{
+      if(session.current!==id)return;
+      session.current+=1;
+      utterances.current=[];
+      synth.cancel();
+      if(alive())onStop();
+    };
+    return utterance;
+  });
+  utterances.current=queued;
+  for(const utterance of queued)synth.speak(utterance);
+  return {ok:true,voice};
+}
+export function drawerFocusables(panel){
+  if(!panel?.querySelectorAll)return [];
+  return [...panel.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled])')]
+    .filter(el=>el.tabIndex!==-1&&!el.hasAttribute?.('disabled')&&!el.closest?.('[hidden]'));
+}
+export function DrawerScrim({onClose}){
+  return <button className="sidebar-scrim" type="button" tabIndex={-1} aria-hidden="true" onMouseDown={event=>event.preventDefault()} onClick={onClose}/>;
+}
+export function openMobileDrawer(panel){
+  panel?.setAttribute('role','dialog');
+  panel?.setAttribute('aria-modal','true');
+  panel?.setAttribute('aria-label','Workspace navigation');
+}
+export function closeMobileDrawer(panel){
+  panel?.removeAttribute('role');
+  panel?.removeAttribute('aria-modal');
+}
+export function trapDrawerTab(event,panel){
+  if(event.key!=='Tab'||!panel)return;
+  const items=drawerFocusables(panel);
+  const active=document.activeElement;
+  if(!items.length){event.preventDefault();return;}
+  const first=items[0],last=items.at(-1);
+  const outside=!panel.contains(active);
+  if(event.shiftKey&&(active===first||outside)){event.preventDefault();last.focus();}
+  else if(!event.shiftKey&&(active===last||outside)){event.preventDefault();first.focus();}
+}
 
 function useRoute(serverRoute){
   const [route,setRoute]=useState(()=>typeof window==='undefined'?serverRoute:tag());
@@ -38,22 +172,7 @@ function useRoute(serverRoute){
 
 function useOffline(){
   const [state,setState]=useState(typeof window==='undefined'||navigator.onLine?'Preparing offline cache':'Offline');
-  useEffect(()=>{
-    function offline(){setState('Offline');}
-    function ready(){setState(navigator.onLine?'Ready offline':'Offline');}
-    if('serviceWorker' in navigator && import.meta.env.PROD){
-      navigator.serviceWorker.register(new URL('./sw.js',document.baseURI)).then(async()=>{
-        await navigator.serviceWorker.ready;
-        ready();
-      }).catch(()=>setState('Browser processing'));
-    }else setState('Browser processing');
-    window.addEventListener('online',ready);
-    window.addEventListener('offline',offline);
-    return ()=>{
-      window.removeEventListener('online',ready);
-      window.removeEventListener('offline',offline);
-    };
-  },[]);
+  useEffect(()=>watchOffline(setState),[]);
   return state;
 }
 
@@ -61,8 +180,8 @@ const categoryColors = {'Organize':'violet','Edit & protect':'rose','Convert':'b
 const categoryMarks = {'Organize':'▤','Edit & protect':'◇','Convert':'⇄','Business':'▦'};
 const pinned = ['merge-pdf','split-pdf','compress-pdf','ocr-pdf'];
 
-function Sidebar({route,section,choose,favorites,visible,close}){
-  return <aside className={'sidebar'+(visible?' sidebar-open':'')} aria-label="Workspace navigation">
+function Sidebar({route,section,choose,favorites,visible,close,drawer}){
+  return <aside ref={drawer} className={'sidebar'+(visible?' sidebar-open':'')} aria-label="Workspace navigation">
     <div className="sidebar-brand"><a className="brand" href={href()} onClick={event=>choose('All tools',event)}><span className="logo-mark" aria-hidden="true"><i/><i/></span>FreebiePDF</a>
       <button className="mobile-close icon-button" type="button" aria-label="Close navigation" onClick={close}>×</button></div>
     <div className="nav-block"><p className="nav-label">Workspace</p>
@@ -175,9 +294,16 @@ function Workspace({tool}){
   const [speaking,setSpeaking]=useState(false);
   const running=useRef(false);
   const mounted=useRef(true);
+  const speechSession=useRef(0);
+  const speechUtterances=useRef([]);
+  function stopSpeech(){
+    speechSession.current+=1;
+    speechUtterances.current=[];
+    window.speechSynthesis?.cancel();
+  }
   useEffect(()=>{
     mounted.current=true;
-    return ()=>{mounted.current=false;window.speechSynthesis?.cancel();};
+    return ()=>{mounted.current=false;stopSpeech();};
   },[]);
   useEffect(()=>()=>{if(download) URL.revokeObjectURL(download.url);},[download]);
   function add(incoming){
@@ -191,7 +317,8 @@ function Workspace({tool}){
     event.preventDefault();
     if(running.current)return;
     setDownload(null);setError(false);
-    window.speechSynthesis?.cancel();
+    stopSpeech();
+    const speechGeneration=speechSession.current;
     setSpeaking(false);setStatus('Processing in this browser…');setBusy(true);running.current=true;
     try {
       const {runTool}=await import('./engine.js');
@@ -199,13 +326,15 @@ function Workspace({tool}){
       const output=await runTool(tool.id,queue,{...options,steps},message=>{if(mounted.current)setStatus(message);});
       if(!mounted.current)return;
       if(output.speech!==undefined){
-        const voices=window.speechSynthesis?.getVoices().filter(voice=>voice.localService)??[];
-        if(!voices.length||!output.speech.trim())throw new Error('A local speech voice and searchable PDF text are required.');
-        const utterance=new SpeechSynthesisUtterance(output.speech);
-        utterance.voice=voices.find(v=>v.lang.startsWith('en'))??voices[0];
-        utterance.onend=()=>{if(mounted.current){setSpeaking(false);setStatus('Playback complete.');}};
-        utterance.onerror=()=>{if(mounted.current){setSpeaking(false);setStatus('Playback stopped.');}};
-        window.speechSynthesis.speak(utterance);
+        const voices=await speechVoices();
+        if(!mounted.current||speechSession.current!==speechGeneration)return;
+        const result=beginReadAloud({
+          text:output.speech,voices,synth:window.speechSynthesis,Utterance:window.SpeechSynthesisUtterance,
+          session:speechSession,utterances:speechUtterances,alive:()=>mounted.current,
+          onComplete:()=>{setSpeaking(false);setStatus('Playback complete.');},
+          onStop:()=>{setSpeaking(false);setStatus('Playback stopped.');},
+        });
+        if(result.error)throw new Error(result.error);
         setSpeaking(true);setStatus('Reading aloud locally.');
       }else{
         setDownload({name:output.name,url:URL.createObjectURL(output.blob),isPdf:output.name.endsWith('.pdf')});
@@ -234,7 +363,7 @@ function Workspace({tool}){
       </fieldset>
       <button className="primary" disabled={busy}>{busy?'Working…':tool.title}</button>
       <p id="status" role="status" className={error?'error':''}>{status}</p>
-      {speaking&&<button type="button" onClick={()=>{window.speechSynthesis.cancel();setSpeaking(false);setStatus('Playback stopped.');}}>Stop playback</button>}
+      {speaking&&<button type="button" onClick={()=>{stopSpeech();setSpeaking(false);setStatus('Playback stopped.');}}>Stop playback</button>}
       {download&&<div id="result"><a className="download-link" download={download.name} href={download.url}>Download {download.name}</a>
         {download.isPdf&&<iframe title="Result PDF preview" src={download.url}/>}</div>}
     </form><ToolGuide tool={tool}/></div>
@@ -246,6 +375,7 @@ export function App({serverRoute=''}={}){
   const offline=useOffline();
   const [filter,setFilter]=useState(()=>load('freebiepdf.web.dashboard-filter','All tools'));
   const [sidebar,setSidebar]=useState(false);
+  const shell=useRef(null), menu=useRef(null), drawer=useRef(null);
   const [favorites,setFavorites]=useState(()=>{const value=load('freebiepdf.web.starred',[]);return Array.isArray(value)?value:[];});
   const tool=byId.get(route);
   useEffect(()=>{
@@ -261,6 +391,26 @@ export function App({serverRoute=''}={}){
     document.addEventListener('keydown',escape);
     return ()=>document.removeEventListener('keydown',escape);
   },[sidebar]);
+  useEffect(()=>{
+    // The drawer is an overlay only at narrow widths, so inert and focus handling apply only there.
+    const narrow=window.matchMedia('(max-width: 720px)');
+    if(!sidebar||!narrow.matches)return;
+    const main=shell.current,panel=drawer.current;
+    main?.setAttribute('inert','');
+    openMobileDrawer(panel);
+    panel?.querySelector('a[href],button')?.focus();
+    function onTab(event){trapDrawerTab(event,panel);}
+    function leave(){if(!narrow.matches)setSidebar(false);}
+    document.addEventListener('keydown',onTab);
+    narrow.addEventListener('change',leave);
+    return ()=>{
+      document.removeEventListener('keydown',onTab);
+      narrow.removeEventListener('change',leave);
+      closeMobileDrawer(panel);
+      main?.removeAttribute('inert');
+      if(panel?.contains(document.activeElement)||document.activeElement===document.body)menu.current?.focus();
+    };
+  },[sidebar]);
   function toggle(id){
     setFavorites(current=>{
       const next=current.includes(id)?current.filter(value=>value!==id):[...current,id];
@@ -274,10 +424,10 @@ export function App({serverRoute=''}={}){
     if(event&&!route){event.preventDefault();window.scrollTo(0,0);}
   }
   return <div className="app-shell">
-    {sidebar&&<button className="sidebar-scrim" type="button" aria-label="Close navigation" onClick={()=>setSidebar(false)}/>}
-    <Sidebar route={route} section={filter} choose={choose} favorites={favorites} visible={sidebar} close={()=>setSidebar(false)}/>
-    <div className="main-shell">
-      <header className="topbar"><div><button className="menu-button icon-button" type="button" aria-label="Open navigation" aria-expanded={sidebar} onClick={()=>setSidebar(!sidebar)}>☰</button><a href={href()} onClick={event=>choose('All tools',event)}>Workspace</a>{tool&&<><span aria-hidden="true">/</span><strong>{tool.title}</strong></>}</div><span className="local"><i/>{offline}</span></header>
+    {sidebar&&<DrawerScrim onClose={()=>setSidebar(false)}/>}
+    <Sidebar route={route} section={filter} choose={choose} favorites={favorites} visible={sidebar} close={()=>setSidebar(false)} drawer={drawer}/>
+    <div className="main-shell" ref={shell}>
+      <header className="topbar"><div><button className="menu-button icon-button" ref={menu} type="button" aria-label="Open navigation" aria-expanded={sidebar} onClick={()=>setSidebar(!sidebar)}>☰</button><a href={href()} onClick={event=>choose('All tools',event)}>Workspace</a>{tool&&<><span aria-hidden="true">/</span><strong>{tool.title}</strong></>}</div><span className="local"><i/>{offline}</span></header>
       <main>{tool?<Workspace key={route} tool={tool}/>:route?<section className="empty-state"><h1>Tool not found</h1><a href={href()}>Browse all tools</a></section>:<Dashboard favorites={favorites} toggle={toggle} filter={filter} setFilter={setFilter}/>}</main>
       <footer><span>FreebiePDF · {all.length} tools</span><span>Files are processed in your browser.</span></footer>
     </div>

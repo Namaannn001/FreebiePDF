@@ -9,6 +9,17 @@ import { guide } from './src/guides.js';
 import { websiteFaq } from './src/site-content.js';
 
 const esc=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+// Tool pages use a relative base. /tools/x and /tools/x/index.html both need to become /tools/x/ before any asset loads.
+export const slashGuard="<script>if(!location.pathname.endsWith('/'))location.replace(location.pathname.replace(/\\/index\\.html$/,'').replace(/\\/?$/,'/')+location.search+location.hash);</script>";
+export function homeHref(){
+  const origin=siteRoot();
+  return origin?origin.pathname:'/';
+}
+export function notFoundDocument(home=homeHref()){
+  return '<!doctype html>\n<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Page not found | FreebiePDF</title>'
+    +'<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#101010;color:#ededed;font:16px/1.5 system-ui,sans-serif;text-align:center}main{padding:24px}h1{font-size:1.5rem;margin:8px 0}a{color:#e0e0e0}</style>'
+    +'</head><body><main><strong>FreebiePDF</strong><h1>Page not found</h1><p><a href="'+esc(home)+'">Back to all PDF tools</a></p></main></body></html>\n';
+}
 const homepageTitle='Free Offline PDF Tools | FreebiePDF';
 const homepageDescription='Merge, split, compress, edit, and convert PDFs for free with 60 browser-based tools. Files stay on your device. FreebiePDF works offline after the first visit.';
 const faqSchema=items=>({
@@ -76,12 +87,14 @@ export async function prerender(root){
       const html=template.replace(/<base href="[^"]*">/,'<base href="'+base+'">')
         .replace(/<title>[^<]*<\/title>/,'<title>'+esc(page.title)+'</title>')
         .replace(/<meta name="description" content="[^"]*">/,'<meta name="description" content="'+esc(page.description)+'">')
+        .replace('<head>',()=>'<head>'+(page.slug?slashGuard:''))
         .replace('</head>',()=>tags+'\n</head>')
         .replace('<div id="root"></div>',()=>'<div id="root">'+markup+'</div>');
       const destination=resolve(root,page.path);
       mkdirSync(destination,{recursive:true});
       writeFileSync(resolve(destination,'index.html'),html);
     }
+    writeFileSync(resolve(root,'404.html'),notFoundDocument(origin?origin.pathname:'/'));
     writeFileSync(resolve(root,'robots.txt'),'User-agent: *\nAllow: /\n'+(origin?'Sitemap: '+new URL('sitemap.xml',origin).href+'\n':''));
     if(origin){
       const items=pages.map(page=>'<url><loc>'+esc(new URL(page.path,origin).href)+'</loc></url>').join('\n');

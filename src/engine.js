@@ -1,10 +1,39 @@
-import {PDFDocument, StandardFonts, degrees, rgb} from 'pdf-lib';
+import {EncryptedPDFError, PDFDocument, StandardFonts, degrees, rgb} from 'pdf-lib';
 import JSZip from 'jszip';
 
 const PDF = 'application/pdf';
 const result = (name, bytes, type=PDF) => ({name, blob:new Blob([bytes],{type})});
 const saved = async (doc,name='document.pdf') => result(name,await doc.save({useObjectStreams:true}));
-const read = async file => PDFDocument.load(await file.arrayBuffer());
+async function unlocked(file,password=''){
+  const {changePassword}=await import('./password.js');
+  const output=await changePassword(file,{password});
+  return new File([output.blob],output.name,{type:PDF});
+}
+const isEncryptedError=error=>error instanceof EncryptedPDFError || error?.message?.startsWith('Input document to `PDFDocument.load` is encrypted.');
+async function read(file,password){
+  try{
+    return {doc:await PDFDocument.load(await file.arrayBuffer()),input:file};
+  }catch(error){
+    if(!isEncryptedError(error)) throw error;
+  }
+  const input=await unlocked(file,password);
+  try{
+    return {doc:await PDFDocument.load(await input.arrayBuffer()),input};
+  }catch(error){
+    if(isEncryptedError(error)) throw new Error('The browser could not process this PDF’s encryption.');
+    throw error;
+  }
+}
+// Upright (as displayed) size of a page, and a converter from upright points to default user space (honours CropBox and /Rotate)
+function pageView(page){
+  const box=page.getCropBox(),angle=((page.getRotation().angle%360)+360)%360;
+  const [width,height]=angle%180?[box.height,box.width]:[box.width,box.height];
+  const toUser=(x,y)=>{
+    const [u,v]={0:[x,y],90:[box.width-y,x],180:[box.width-x,box.height-y],270:[y,box.height-x]}[angle]??[x,y];
+    return {x:box.x+u,y:box.y+v};
+  };
+  return {box,angle,width,height,toUser};
+}
 const cleanText = (font, text) => Array.from(text, char => {
   try { font.encodeText(char); return char; } catch { return '?'; }
 }).join('');
@@ -67,14 +96,18 @@ async function imagesToPdf(files){
       bitmap.close();
       embedded=await output.embedPng(await (await canvasBlob(canvas,'image/png')).arrayBuffer());
     }
-    const w=embedded.width*.75,h=embedded.height*.75;
-    const page=output.addPage([w,h]);
-    page.drawImage(embedded,{x:0,y:0,width:w,height:h});
+    const w=embedded.width*.75,h=embedded.height*.75,landscape=embedded.width>embedded.height;
+    const [pw,ph]=landscape?[841.89,595.28]:[595.28,841.89],scale=Math.min(1,pw/w,ph/h);
+    const page=output.addPage([pw,ph]);
+    page.drawImage(embedded,{x:(pw-w*scale)/2,y:(ph-h*scale)/2,width:w*scale,height:h*scale});
   }
   return saved(output,'images.pdf');
 }
 
 async function createPdf(text){
+  // Built-in PDF fonts only cover Windows-1252, so refuse text that would be garbled
+  const unsupported=[...new Set(text.match(/[^\t\n\r\x20-\x7e\xa0-\xff€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ]/gu)??[])];
+  if(unsupported.length) throw new Error('This text contains characters the built-in PDF font cannot show: '+unsupported.slice(0,10).join(', ')+(unsupported.length>10?' …':'')+'. Use only Latin characters, or print to PDF from your browser instead.');
   const {jsPDF}=await import('jspdf');
   const doc=new jsPDF({unit:'pt',format:'a4'});
   doc.setFontSize(11);
@@ -102,6 +135,89 @@ const textPage=async page=>{
   const content=await page.getTextContent();
   return content.items.map(item=>('str' in item?item.str+(item.hasEOL?'\n':' '):'')).join('').trim();
 };
+// Joins text items, then finds case-insensitive, whitespace-normalized phrase matches and maps them back to item character spans
+function findPhrase(items,phrase){
+  const runs=[];let source='';
+  for(const item of items){
+    if(!('str' in item)) continue;
+    const previous=runs[runs.length-1]?.item;
+    if(previous&&(previous.hasEOL||
+      Math.abs(item.transform[5]-previous.transform[5])>Math.max(item.height,previous.height)/2||
+      item.transform[4]<previous.transform[4])) source+='\n';
+    else if(previous&&item.transform[4]-previous.transform[4]-previous.width>previous.height*.2) source+=' ';
+    runs.push({item,start:source.length});
+    source+=item.str;
+  }
+  let folded='',map=[],gap=false;
+  for(let i=0;i<source.length;i++){
+    if(/\s/.test(source[i])){gap=folded.length>0;continue;}
+    if(gap){folded+=' ';map.push(-1);gap=false;}
+    const lower=source[i].toLowerCase();
+    folded+=lower.length===1?lower:source[i];map.push(i);
+  }
+  const needle=phrase.replace(/\s+/g,' ').trim().toLowerCase();
+  const spans=[];
+  for(let at=folded.indexOf(needle);at>=0;at=folded.indexOf(needle,at+1)) spans.push([map[at],map[at+needle.length-1]+1]);
+  const boxes=[];
+  for(const [from,to] of spans) for(const {item,start} of runs){
+    const a=Math.max(from,start),b=Math.min(to,start+item.str.length);
+    if(a<b) boxes.push({item,from:a-start,to:b-start});
+  }
+  return {matches:spans.length,boxes};
+}
+
+function redactionBounds({item,from,to},page,context){
+  const pad=Math.max(2.5,item.height*.1);
+  const whole=[-pad,item.width+pad];
+  if((from===0&&to===item.str.length)||item.dir!=='ltr'||!page.commonObjs.has(item.fontName)) return whole;
+  const font=page.commonObjs.get(item.fontName);
+  if(font.isType3Font||!context.measureText||!item.height) return whole;
+  const family=font.systemFontInfo?.css||(font.loadedName&&font.fallbackName&&`"${font.loadedName}", ${font.fallbackName}`);
+  if(!family) return whole;
+  const previous=context.font;
+  context.font=`${font.italic?'italic':'normal'} ${font.black?'900':font.bold?'bold':'normal'} ${item.height}px ${family}`;
+  try{
+    const full=context.measureText(item.str).width;
+    const start=context.measureText(item.str.slice(0,from)).width;
+    const end=context.measureText(item.str.slice(0,to)).width;
+    if(!(full>0&&start>=0&&end>start&&end<=full)) return whole;
+    const scale=item.width/full;
+    return [start*scale-pad,end*scale+pad];
+  }catch{
+    return whole;
+  }finally{context.font=previous;}
+}
+
+async function splitBySize(doc,indices,limit){
+  if(!Number.isFinite(limit)||limit<=0) throw new Error('Enter a positive file size in KB.');
+  const zip=new JSZip();
+  let offset=0,part=1;
+  while(offset<indices.length){
+    const remaining=indices.length-offset;
+    // Copy each candidate as a batch so shared resources are serialized only once.
+    const measure=async count=>(await copyPages(doc,indices.slice(offset,offset+count),'part.pdf')).blob;
+    let count=1,best=await measure(count);
+    if(best.size>limit) throw new Error('Page '+(indices[offset]+1)+' is '+best.size+' bytes on its own and exceeds the size limit.');
+    let next=Math.min(remaining,count*2);
+    while(next>count){
+      const candidate=await measure(next);
+      if(candidate.size>limit) break;
+      best=candidate;
+      count=next;
+      next=Math.min(remaining,count*2);
+    }
+    while(next-count>1){
+      const middle=Math.floor((count+next)/2);
+      const candidate=await measure(middle);
+      if(candidate.size>limit) next=middle;
+      else{count=middle;best=candidate;}
+    }
+    zip.file('part-'+part+'.pdf',new Uint8Array(await best.arrayBuffer()));
+    part++;
+    offset+=count;
+  }
+  return downloadZip(zip,'pdf-parts.zip');
+}
 
 export async function runTool(id,files,options={},progress=()=>{}){
   const file=files[0],text=options.text??'',preset=options.preset, pages=options.pages;
@@ -141,20 +257,43 @@ export async function runTool(id,files,options={},progress=()=>{}){
   if(id==='workflow'){
     const steps=options.steps??[];
     if(!steps.length||steps.length>8) throw new Error('Add one to eight operations.');
-    let input=file;
+    let {input}=await read(file,options.password);
     for(const step of steps){
-      progress('Running '+step.label+'â€¦');
-      const processed=await runTool(step.id,[input],step);
+      progress('Running '+step.label+'…');
+      const processed=await runTool(step.id,[input],{...step});
       input=new File([processed.blob],processed.name,{type:PDF});
     }
     return {name:'workflow.pdf',blob:input};
   }
   if(renderModes.has(id)){
     return withRender(file,options,async doc=>{
+      if(id==='compare-pdfs'){
+        if(files.length!==2) throw new Error('Choose exactly two PDFs.');
+        let sections;
+        try{
+          sections=await withRender(files[1],options,async second=>{
+            const indices=range(pages,Math.max(doc.numPages,second.numPages));
+            const values=[];
+            for(const i of indices){
+              const number=i+1;
+              progress('Reading page '+number+'…');
+              const left=number<=doc.numPages?await textPage(await doc.getPage(number)):null;
+              const right=number<=second.numPages?await textPage(await second.getPage(number)):null;
+              const status=left===null?'only in second file':right===null?'only in first file':left===right?'same text':'different text';
+              values.push('<h2>Page '+number+' · '+status+'</h2><div><pre>'+escapeHtml(left??'')+'</pre><pre>'+escapeHtml(right??'')+'</pre></div>');
+            }
+            return values;
+          });
+        }catch(error){
+          if(error?.name==='PasswordException') throw new Error('The second PDF needs a different password; unlock it first with Unlock PDF.');
+          throw error;
+        }
+        return result('compare.html','<!doctype html><meta charset="utf-8"><title>Compare PDFs</title><style>body{font:16px system-ui;padding:20px}div{display:grid;grid-template-columns:1fr 1fr;gap:15px}pre{white-space:pre-wrap;background:#eee;padding:10px}</style>'+sections.join(''),'text/html;charset=utf-8');
+      }
       const indices=range(pages,doc.numPages);
-      if(['extract-text','pdf-to-html','pdf-to-audio','summarize-pdf','pdf-to-epub','pdf-to-word','pdf-to-excel','pdf-to-pptx','redaction-checker','compare-pdfs'].includes(id)){
+      if(['extract-text','pdf-to-html','pdf-to-audio','summarize-pdf','pdf-to-epub','pdf-to-word','pdf-to-excel','pdf-to-pptx','redaction-checker'].includes(id)){
         const texts=[];
-        for(const i of indices){progress('Reading page '+(i+1)+'â€¦');texts.push(await textPage(await doc.getPage(i+1)));}
+        for(const i of indices){progress('Reading page '+(i+1)+'…');texts.push(await textPage(await doc.getPage(i+1)));}
         const full=texts.join('\n\n');
         if(['pdf-to-word','pdf-to-excel','pdf-to-pptx'].includes(id)){
           const {officeExport}=await import('./office.js');
@@ -209,19 +348,6 @@ export async function runTool(id,files,options={},progress=()=>{}){
           zip.file('doc.xhtml','<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Document</title></head><body><pre>'+escapeHtml(full.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,''))+'</pre></body></html>');
           return result('document.epub',await zip.generateAsync({type:'uint8array'}),'application/epub+zip');
         }
-        if(id==='compare-pdfs'){
-          if(files.length!==2) throw new Error('Choose exactly two PDFs.');
-          const other=await withRender(files[1],options,async second=>{
-            const values=[];
-            for(let i=1;i<=second.numPages;i++) values.push(await textPage(await second.getPage(i)));
-            return values;
-          });
-          const sections=Array.from({length:Math.max(texts.length,other.length)},(_,i)=>{
-            const left=texts[i]??'',right=other[i]??'';
-            return '<h2>Page '+(i+1)+' Â· '+(left===right?'same text':'different text')+'</h2><div><pre>'+escapeHtml(left)+'</pre><pre>'+escapeHtml(right)+'</pre></div>';
-          });
-          return result('compare.html','<!doctype html><meta charset="utf-8"><title>Compare PDFs</title><style>body{font:16px system-ui;padding:20px}div{display:grid;grid-template-columns:1fr 1fr;gap:15px}pre{white-space:pre-wrap;background:#eee;padding:10px}</style>'+sections.join(''),'text/html;charset=utf-8');
-        }
         if(id==='pdf-to-html') return result('export.html','<!doctype html><meta charset="utf-8"><title>PDF text</title><pre style="white-space:pre-wrap">'+escapeHtml(full)+'</pre>','text/html;charset=utf-8');
         return result('extracted.txt',full,'text/plain;charset=utf-8');
       }
@@ -234,7 +360,7 @@ export async function runTool(id,files,options={},progress=()=>{}){
           ocr=await createOcr(progress);
         }
         for(const i of indices){
-          progress('Processing page '+(i+1)+'â€¦');
+          progress('Processing page '+(i+1)+'…');
           const page=await doc.getPage(i+1);
           const isExport=id.startsWith('pdf-to-');
           const dpi=isExport?options.dpi:(id==='compress-pdf'?({Light:144,Medium:110,Heavy:85}[preset]??110):144);
@@ -256,18 +382,21 @@ export async function runTool(id,files,options={},progress=()=>{}){
             const viewport=page.getViewport({scale:2});
             const context=canvas.getContext('2d');
             context.fillStyle='black';
-            for(const item of content.items){
-              if(!('str' in item)||!item.str.toLowerCase().includes(text.toLowerCase()))continue;
+            const {matches,boxes}=findPhrase(content.items,text);
+            redactions+=matches;
+            for(const box of boxes){
+              const {item}=box;
               const [a,b,c,d,x,y]=item.transform;
-              const length=item.width;
               const basis=Math.hypot(a,b)||1;
               const up=Math.hypot(c,d)||1;
-              const u=[a/basis*length,b/basis*length],v=[c/up*item.height,d/up*item.height];
-              const points=[[x-v[0]*.22,y-v[1]*.22],[x+u[0]-v[0]*.22,y+u[1]-v[1]*.22],
-                [x+u[0]+v[0]*1.2,y+u[1]+v[1]*1.2],[x+v[0]*1.2,y+v[1]*1.2]].map(point=>viewport.convertToViewportPoint(...point));
+              const u=[a/basis,b/basis],v=[c/up*item.height,d/up*item.height];
+              const [s,e]=redactionBounds(box,page,context);
+              const x0=x+u[0]*s,y0=y+u[1]*s,span=[u[0]*(e-s),u[1]*(e-s)];
+              const points=[[x0-v[0]*.22,y0-v[1]*.22],[x0+span[0]-v[0]*.22,y0+span[1]-v[1]*.22],
+                [x0+span[0]+v[0]*1.2,y0+span[1]+v[1]*1.2],[x0+v[0]*1.2,y0+v[1]*1.2]].map(point=>viewport.convertToViewportPoint(...point));
               context.beginPath();
               points.forEach(([px,py],i)=>i?context.lineTo(px,py):context.moveTo(px,py));
-              context.closePath();context.fill();redactions++;
+              context.closePath();context.fill();
             }
           }
           const jpg=id==='pdf-to-jpg'||id==='compress-pdf';
@@ -296,16 +425,17 @@ export async function runTool(id,files,options={},progress=()=>{}){
         }
       } finally { if(ocr) await ocr.close(); }
       if(id.startsWith('pdf-to-')) return downloadZip(archive,'page-images.zip');
-      if(id==='redact-pdf'&&!redactions) throw new Error('No matching text runs found. The search cannot match phrases split across text runs.');
+      if(id==='redact-pdf'&&!redactions) throw new Error('Phrase not found on the selected pages.');
       const rendered=await saved(output,id+'.pdf');
       if(id==='compress-pdf'&&rendered.blob.size>=file.size) return {name:'original-size.pdf',blob:file,note:'No smaller output was found. Returned the original.'};
       return rendered;
     });
   }
-  const doc=await read(file);
+  const {doc,input}=await read(file,options.password);
   const indices=range(pages,doc.getPageCount());
   if(id==='merge-pdf'||id==='alternate-mix-pdf'){
-    const docs=[doc,...await Promise.all(files.slice(1).map(read))],output=await PDFDocument.create();
+    const others=await Promise.all(files.slice(1).map(file=>read(file,options.password)));
+    const docs=[doc,...others.map(({doc})=>doc)],output=await PDFDocument.create();
     const copied=await Promise.all(docs.map(input=>output.copyPages(input,input.getPageIndices())));
     if(id==='merge-pdf') copied.flat().forEach(page=>output.addPage(page));
     else for(let i=0;i<Math.max(...copied.map(a=>a.length));i++) for(const list of copied) if(list[i]) output.addPage(list[i]);
@@ -319,13 +449,14 @@ export async function runTool(id,files,options={},progress=()=>{}){
     }
     return downloadZip(zip,'split-pages.zip');
   }
-  if(['split-pdf-in-half','split-pdf-by-size','split-pdf-by-text','split-pdf-by-bookmarks'].includes(id)){
+  if(id==='split-pdf-by-size') return splitBySize(doc,indices,Number(text||2048)*1024);
+  if(['split-pdf-in-half','split-pdf-by-text','split-pdf-by-bookmarks'].includes(id)){
     const groups=[];
     if(id==='split-pdf-in-half'){
       if(indices.length<2) throw new Error('Choose at least two pages.');
       const middle=Math.ceil(indices.length/2);groups.push(indices.slice(0,middle),indices.slice(middle));
     }else if(id==='split-pdf-by-bookmarks'){
-      await withRender(file,options,async source=>{
+      await withRender(input,options,async source=>{
         const outline=await source.getOutline()??[];
         const markers=new Set();
         for(const item of outline){
@@ -344,7 +475,7 @@ export async function runTool(id,files,options={},progress=()=>{}){
       });
     }else if(id==='split-pdf-by-text'){
       if(!text.trim()) throw new Error('Enter a phrase that starts a section.');
-      await withRender(file,options,async source=>{
+      await withRender(input,options,async source=>{
         let current=[];
         for(const i of indices){
           const pageText=await textPage(await source.getPage(i+1));
@@ -353,18 +484,6 @@ export async function runTool(id,files,options={},progress=()=>{}){
         }
         if(current.length)groups.push(current);
       });
-    }else{
-      const limit=Number(text||2048)*1024;
-      if(!(limit>0)) throw new Error('Enter a positive file size in KB.');
-      let current=[];
-      for(const i of indices){
-        const single=await copyPages(doc,[i],'page.pdf');
-        if(single.blob.size>limit) throw new Error('Page '+(i+1)+' exceeds the limit by itself.');
-        const candidate=await copyPages(doc,[...current,i],'part.pdf');
-        if(candidate.blob.size>limit){groups.push(current);current=[];}
-        current.push(i);
-      }
-      if(current.length)groups.push(current);
     }
     const zip=new JSZip();
     for(let i=0;i<groups.length;i++){
@@ -388,13 +507,17 @@ export async function runTool(id,files,options={},progress=()=>{}){
       for(const [slot,index] of indices.slice(start,start+count).entries()){
         const source=doc.getPage(index);
         if(!source.node.Contents()) continue;
-        const embedded=await output.embedPage(source);
+        const box=source.getCropBox(),angle=((source.getRotation().angle%360)+360)%360;
+        const embedded=await output.embedPage(source,{left:box.x,bottom:box.y,right:box.x+box.width,top:box.y+box.height});
         const cellW=width/cols,cellH=height/rows;
-        const factor=Math.min((cellW-20)/embedded.width,(cellH-20)/embedded.height);
-        const scaled=embedded.scale(factor);
-        const x=(slot%cols)*cellW+(cellW-scaled.width)/2;
-        const y=height-(Math.floor(slot/cols)+1)*cellH+(cellH-scaled.height)/2;
-        target.drawPage(embedded,{x,y,...scaled});
+        const sideways=angle%180!==0;
+        const shownW=sideways?embedded.height:embedded.width,shownH=sideways?embedded.width:embedded.height;
+        const factor=Math.min((cellW-20)/shownW,(cellH-20)/shownH);
+        const left=(slot%cols)*cellW+(cellW-shownW*factor)/2;
+        const bottomY=height-(Math.floor(slot/cols)+1)*cellH+(cellH-shownH*factor)/2;
+        // Where the crop box corner lands on the upright page; drawPage then rotates the content by -angle so it matches the on-screen orientation
+        const [ox,oy]={0:[0,0],90:[0,box.width],180:[box.width,box.height],270:[box.height,0]}[angle]??[0,0];
+        target.drawPage(embedded,{x:left+ox*factor,y:bottomY+oy*factor,xScale:factor,yScale:factor,rotate:degrees(-angle)});
       }
     }
     return saved(output,'layout.pdf');
@@ -435,12 +558,12 @@ export async function runTool(id,files,options={},progress=()=>{}){
   }
   const font=await doc.embedFont(id==='sign-pdf'?StandardFonts.TimesRomanItalic:StandardFonts.Helvetica);
   for(const [j,index] of indices.entries()){
-    const page=doc.getPage(index),{width,height}=page.getSize();
+    const page=doc.getPage(index),{box,width,height,toUser,angle}=pageView(page);
     if(id==='rotate-pdf')page.setRotation(degrees((page.getRotation().angle+Number(preset||90))%360));
     else if(id==='crop-resize-pdf'){
       const margin=Number(text||18);
-      if(!Number.isFinite(margin)||margin<0||margin*2>=Math.min(width,height))throw new Error('Enter a margin smaller than half the page size.');
-      const box=page.getCropBox();page.setCropBox(box.x+margin,box.y+margin,box.width-2*margin,box.height-2*margin);
+      if(!Number.isFinite(margin)||margin<0||margin*2>=Math.min(box.width,box.height))throw new Error('Enter a margin smaller than half the page size.');
+      page.setCropBox(box.x+margin,box.y+margin,box.width-2*margin,box.height-2*margin);
     }else if(['edit-pdf-text','sign-pdf','add-watermark','page-numbers','bates-numbering','headers-footers'].includes(id)){
       let label=text;
       if(id==='page-numbers'){
@@ -455,7 +578,8 @@ export async function runTool(id,files,options={},progress=()=>{}){
       const x=top?Number(options.x||36):Math.max(12,(width-font.widthOfTextAtSize(value,size))/2);
       const y=top?height-Number(options.y||54):id==='add-watermark'?height/2:24;
       if(!Number.isFinite(x+y)||x<0||y<0||x>=width||y>=height)throw new Error('The text position is outside one of the pages.');
-      page.drawText(value,{font,size,x,y,color:rgb(.12,.26,.23),opacity:id==='add-watermark'?.28:1,maxWidth:Math.max(1,width-x-8)});
+      const at=toUser(x,y);
+      page.drawText(value,{font,size,x:at.x,y:at.y,rotate:degrees(angle),color:rgb(.12,.26,.23),opacity:id==='add-watermark'?.28:1,maxWidth:Math.max(1,width-x-8)});
     }else if(id!=='repair-pdf') throw new Error('This workflow is unavailable.');
   }
   return saved(doc,id+'.pdf');
