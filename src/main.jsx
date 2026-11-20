@@ -1,15 +1,78 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {createRoot} from 'react-dom/client';
+import {createRoot,hydrateRoot} from 'react-dom/client';
 import {all,byId,catalog,workflowTools} from './catalog.js';
 import {guide} from './guides.js';
 import {websiteFaq} from './site-content.js';
+import * as seo from './seo-content.js';
 import './style.css';
 
 const href = id => id ? 'tools/'+id+'/' : './';
-const tag=()=>{
-  if(location.hash.startsWith('#/'))return location.hash.slice(2);
-  return location.pathname.match(/\/tools\/([a-z0-9-]+)(?:\/|\/index\.html)?$/)?.[1]??'';
+export const brandName=seo.brand?.name??'Anywhere PDF';
+// Storage keys keep the legacy "freebiepdf.web.*" prefix so saved stars and workflows survive the rebrand.
+const rebrandLegacyCopy=text=>text.replace(/freebiepdf/gi,brandName);
+const rebrandLegacyFaq=faq=>faq.map(pair=>pair.map(rebrandLegacyCopy));
+const home={
+  kind:'home',path:'',title:'Free Offline PDF Tools | '+brandName,
+  meta:`Merge, split, compress, edit, and convert PDFs for free with ${all.length} browser-based tools. Files stay on your device and the tools work offline.`,
+  h1:'PDF tools',hero:`Edit, merge, and convert PDFs free in your browser. Use all ${all.length} tools offline after the first visit.`,
+  sections:[],...seo.home,
+  faq:seo.home?.faq??rebrandLegacyFaq(websiteFaq),
 };
+const toolPages=all.map(tool=>{
+  const content=seo.toolSeo?.[tool.id];
+  const fallback=content?.steps&&content?.faq?null:guide(tool);
+  return {
+    kind:'tool',path:href(tool.id),tool,
+    title:content?.title??`${tool.title} Online, Free | ${brandName}`,
+    meta:content?.meta??`${tool.description} Use ${brandName} free in your browser. Works offline after the first visit.`,
+    h1:content?.h1??tool.title,intro:content?.intro??tool.description,
+    steps:content?.steps??fallback.steps.map(rebrandLegacyCopy),faq:content?.faq??rebrandLegacyFaq(fallback.questions),
+    related:content?.related??(Object.values(catalog).find(list=>list.includes(tool))??[])
+      .filter(entry=>entry.id!==tool.id).slice(0,3).map(entry=>[entry.id,entry.title]),
+  };
+});
+const toolsById=new Map(toolPages.map(page=>[page.tool.id,page]));
+const hubs=(seo.hubs??[]).map(hub=>({...hub,kind:'hub',path:hub.slug+'/'}));
+const pageTitleKey=title=>title.trim().toLowerCase().replace(/\s+/g,' ');
+const landingTitles=new Set([home,...toolPages,...hubs].map(page=>pageTitleKey(page.title)));
+const guides=(seo.guides??[]).map(article=>({
+  ...article,kind:'guide',path:'guides/'+article.slug+'/',
+  // A distinct guide heading can disambiguate an editorial title shared with a tool.
+  title:landingTitles.has(pageTitleKey(article.title))?`${article.h1} | ${brandName}`:article.title,
+}));
+export const pages=[home,...toolPages,...hubs,...guides];
+const pagesByPath=new Map(pages.map(page=>[page.path,page]));
+const categoryHubs=new Map(Object.entries(catalog).flatMap(([name,tools])=>{
+  const preferred={'Organize':'organize-pdf','Edit & protect':'edit-pdf','Convert':'convert-pdf'}[name];
+  const ids=new Set(tools.map(tool=>tool.id));
+  // If there's no single category hub, pick the hub covering the most tools in this category.
+  const coverage=hub=>(hub.toolIds??[]).filter(id=>ids.has(id)).length;
+  const hub=hubs.find(hub=>hub.slug===preferred)??hubs.filter(hub=>coverage(hub)>0).sort((a,b)=>coverage(b)-coverage(a))[0];
+  return hub?[[name,hub]]:[];
+}));
+export function breadcrumbs(page){
+  if(page===home)return [];
+  const category=page.tool&&Object.keys(catalog).find(name=>catalog[name].includes(page.tool));
+  const hub=page.tool&&(categoryHubs.get(category)?.toolIds?.includes(page.tool.id)
+    ?categoryHubs.get(category):hubs.find(hub=>hub.toolIds?.includes(page.tool.id)));
+  return [{path:'',name:'All tools'},...(hub?[{path:hub.path,name:hub.h1}]:[]),{path:page.path,name:page.h1}];
+}
+
+function browserRoute(){
+  const base=new URL(document.baseURI);
+  const path=location.pathname.slice(base.pathname.length).replace(/(^|\/)index\.html$/,'$1');
+  return path&& !path.endsWith('/')?path+'/':path;
+}
+
+function redirectLegacyHash(){
+  if(!location.hash.startsWith('#/'))return false;
+  const tool=byId.get(location.hash.slice(2));
+  if(!tool)return false;
+  const target=new URL(href(tool.id),document.baseURI);
+  target.search=location.search;
+  location.replace(target.href);
+  return true;
+}
 const initial=fields=>Object.fromEntries(fields.filter(field=>field.choices).map(field=>[field.key,field.choices[0]]));
 const load=(key,fallback)=>{
   try {
@@ -61,11 +124,11 @@ export function confirmOfflineCache(worker,timeout=5000){
       resolve(ok===true);
     }
     function onMessage(event){
-      if(event.data?.type!=='freebiepdf-cache-status'||event.data.id!==id)return;
+      if(event.data?.type!=='anywherepdf-cache-status'||event.data.id!==id)return;
       finish(event.data.ok===true);
     }
     navigator.serviceWorker.addEventListener('message',onMessage);
-    try{worker.postMessage({type:'freebiepdf-cache-check',id});}
+    try{worker.postMessage({type:'anywherepdf-cache-check',id});}
     catch{finish(false);}
   });
 }
@@ -87,12 +150,17 @@ export function watchOffline(setState){
     }catch{if(!cancel&&gen===generation)show('unsupported');}
   }
   function offline(){if(!cancel)setState('Offline');}
-  confirm();
-  window.addEventListener('online',confirm);
+  function start(){
+    window.addEventListener('online',confirm);
+    navigator.serviceWorker?.addEventListener('controllerchange',confirm);
+    confirm();
+  }
+  if(document.readyState==='complete')start();
+  else window.addEventListener('load',start,{once:true});
   window.addEventListener('offline',offline);
-  navigator.serviceWorker?.addEventListener('controllerchange',confirm);
   return ()=>{
     cancel=true;
+    window.removeEventListener('load',start);
     window.removeEventListener('online',confirm);
     window.removeEventListener('offline',offline);
     navigator.serviceWorker?.removeEventListener('controllerchange',confirm);
@@ -156,22 +224,9 @@ export function trapDrawerTab(event,panel){
   else if(!event.shiftKey&&(active===last||outside)){event.preventDefault();first.focus();}
 }
 
-function useRoute(serverRoute){
-  const [route,setRoute]=useState(()=>typeof window==='undefined'?serverRoute:tag());
-  useEffect(()=>{
-    function change(){setRoute(tag());if(!location.hash||location.hash.startsWith('#/'))window.scrollTo(0,0);}
-    window.addEventListener('hashchange',change);
-    window.addEventListener('popstate',change);
-    return ()=>{
-      window.removeEventListener('hashchange',change);
-      window.removeEventListener('popstate',change);
-    };
-  },[]);
-  return route;
-}
-
 function useOffline(){
-  const [state,setState]=useState(typeof window==='undefined'||navigator.onLine?'Preparing offline cache':'Offline');
+  // Start empty so prerendered HTML carries no status text; the effect sets the real label.
+  const [state,setState]=useState('');
   useEffect(()=>watchOffline(setState),[]);
   return state;
 }
@@ -179,30 +234,73 @@ function useOffline(){
 const categoryColors = {'Organize':'violet','Edit & protect':'rose','Convert':'blue','Business':'amber'};
 const categoryMarks = {'Organize':'▤','Edit & protect':'◇','Convert':'⇄','Business':'▦'};
 const pinned = ['merge-pdf','split-pdf','compress-pdf','ocr-pdf'];
+const quickActions=[['merge-pdf','Merge PDF'],['compress-pdf','Compress PDF'],['pdf-to-word','PDF to Word']];
+const popular=[quickActions[0],['split-pdf','Split PDF'],quickActions[1],quickActions[2],['pdf-to-jpg','PDF to JPG'],
+  ['images-to-pdf','JPG to PDF'],['word-to-pdf','Word to PDF'],['ocr-pdf','OCR PDF'],['encrypt-pdf','Protect PDF'],
+  ['unlock-pdf','Unlock PDF'],['rotate-pdf','Rotate PDF'],['page-numbers','Add page numbers to PDF']];
+const toolLinks=(ids=[])=>ids.filter(id=>toolsById.has(id)).map(id=>[id,toolsById.get(id).h1]);
 
-function Sidebar({route,section,choose,favorites,visible,close,drawer}){
-  return <aside ref={drawer} className={'sidebar'+(visible?' sidebar-open':'')} aria-label="Workspace navigation">
-    <div className="sidebar-brand"><a className="brand" href={href()} onClick={event=>choose('All tools',event)}><span className="logo-mark" aria-hidden="true"><i/><i/></span>FreebiePDF</a>
+function Sidebar({page,filter,favorites,visible,close,drawer}){
+  const sideLink=path=>page.path===path?'side-link current':'side-link';
+  const current=path=>page.path===path?'page':undefined;
+  return <aside id="workspace-sidebar" ref={drawer} className={'sidebar'+(visible?' sidebar-open':'')} aria-label="Workspace sidebar">
+    <div className="sidebar-brand"><a className="brand" href={href()}><img src="logo.svg" width="34" height="34" alt=""/>{brandName}</a>
       <button className="mobile-close icon-button" type="button" aria-label="Close navigation" onClick={close}>×</button></div>
+    <nav aria-label="Workspace navigation">
     <div className="nav-block"><p className="nav-label">Workspace</p>
-      <a className={'side-link'+(!route&&section==='All tools'?' current':'')} href={href()} onClick={event=>choose('All tools',event)}><span aria-hidden="true">◫</span>All tools</a>
-      <a className={'side-link'+(!route&&section==='Starred'?' current':'')} href={href()} onClick={event=>choose('Starred',event)}><span aria-hidden="true">☆</span>Starred<span className="side-count">{favorites.length||''}</span></a>
+      <a className={sideLink('')} aria-current={current('')} href={href()}><span aria-hidden="true">◫</span>All tools</a>
+      <a className={'side-link'+(page===home&&filter==='Starred'?' current':'')} href="./?view=starred#catalog"><span aria-hidden="true">☆</span>Starred<span className="side-count">{favorites.length||''}</span></a>
     </div>
-    <div className="nav-block"><p className="nav-label">Categories</p>
-      {Object.entries(catalog).map(([name,tools])=><a className={'side-link'+(!route&&section===name?' current':'')} href={href()} onClick={event=>choose(name,event)} key={name}>
-        <span aria-hidden="true">{categoryMarks[name]}</span>{name}<span className="side-count">{tools.length}</span>
+    {categoryHubs.size>0&&<div className="nav-block"><p className="nav-label">Categories</p>
+      {[...categoryHubs].map(([name,hub])=><a className={sideLink(hub.path)} aria-current={current(hub.path)} href={hub.path} key={name}>
+        <span aria-hidden="true">{categoryMarks[name]}</span>{name}
       </a>)}
-    </div>
+    </div>}
     <div className="nav-block nav-quick"><p className="nav-label">Quick access</p>
-      {pinned.map(id=><a className={'side-link'+(id===route?' current':'')} href={href(id)} key={id} onClick={close}><span aria-hidden="true">·</span>{byId.get(id).title}</a>)}
+      {pinned.map(id=><a className={sideLink(href(id))} aria-current={current(href(id))} href={href(id)} key={id}><span aria-hidden="true">·</span>{byId.get(id).title}</a>)}
     </div>
+    </nav>
     <div className="sidebar-foot"><span className="privacy-mark" aria-hidden="true">◈</span><div><strong>On-device processing</strong><small>Files stay in your browser.</small></div></div>
   </aside>;
+}
+
+function Breadcrumbs({page}){
+  const trail=breadcrumbs(page);
+  return trail.length>0&&<nav className="breadcrumbs" aria-label="Breadcrumb"><ol>
+    {trail.map(({path,name},index)=><li key={path}>{index===trail.length-1
+      ?<span aria-current="page">{name}</span>:<a href={path||href()}>{name}</a>}</li>)}
+  </ol></nav>;
+}
+
+function ContentSections({sections=[]}){
+  return sections.map(({heading,body})=><section className="content-section" key={heading}>
+    <h2>{heading}</h2>{body?.map((paragraph,index)=><p key={index}>{paragraph}</p>)}
+  </section>);
+}
+
+function Faq({items,id,title='Questions & answers',firstOpen=false}){
+  if(!items?.length)return null;
+  return <section id={id} className={'help-panel faq'+(id?' site-faq':'')}>
+    <h2>{title}</h2>
+    {items.map(([question,answer],index)=><details key={question} open={firstOpen&&index===0?true:undefined}>
+      <summary>{question}</summary><p>{answer}</p>
+    </details>)}
+  </section>;
+}
+
+function ToolLinks({items}){
+  return <ul className="link-list">{items.filter(([id])=>byId.has(id)).map(([id,anchor])=><li key={id}><a href={href(id)}>{anchor}</a></li>)}</ul>;
+}
+
+function PageLinks({items}){
+  return <ul className="link-list">{items.map(page=><li key={page.path}><a href={page.path}>{page.h1}</a></li>)}</ul>;
 }
 
 function Dashboard({favorites,toggle,filter,setFilter}){
   const [query,setQuery]=useState('');
   const search=useRef(null);
+  const popularCopy=home.sections?.find(section=>section.heading==='Popular PDF tools');
+  const otherSections=home.sections?.filter(section=>section!==popularCopy);
   useEffect(()=>{
     function shortcut(event){
       if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();search.current?.focus();}
@@ -210,50 +308,80 @@ function Dashboard({favorites,toggle,filter,setFilter}){
     document.addEventListener('keydown',shortcut);
     return ()=>document.removeEventListener('keydown',shortcut);
   },[]);
-  const categories=['All tools',...Object.keys(catalog),'Starred'];
-  const groups=Object.entries(catalog).filter(([name])=>['All tools','Starred',name].includes(filter)).map(([name,list])=>[
+  const groups=Object.entries(catalog).map(([name,list])=>[
     name,list.filter(tool=>(filter!=='Starred'||favorites.includes(tool.id))&&[tool.title,tool.description,tool.id].join(' ').toLowerCase().includes(query.trim().toLowerCase())),
   ]).filter(([,list])=>list.length);
   const count=groups.reduce((sum,[,list])=>sum+list.length,0);
   return <>
     <section className="hero">
-      <div className="hero-content"><h1>PDF tools</h1><p>Edit, merge, and convert PDFs free in your browser. Use all 60 tools offline after the first load.</p>
+      <div className="hero-content"><h1>{home.h1}</h1><p>{home.hero}</p>
         <label className="searchbox"><span aria-hidden="true" className="search-icon"/><span className="sr-only">Find a tool</span><input ref={search} type="search" placeholder="Search PDF tools" value={query} onChange={event=>setQuery(event.target.value)}/><kbd aria-hidden="true">Ctrl K</kbd></label>
       </div>
-      <div className="quick-panel"><h2>Quick actions</h2>{pinned.slice(0,3).map(id=><a key={id} href={href(id)}><span className={'quick-mark '+id} aria-hidden="true"/><span>{byId.get(id).title}</span><span className="quick-format">{id==='split-pdf'?'ZIP / PDF':'PDF'}</span></a>)}</div>
+      <div className="quick-panel"><h2>Quick actions</h2>{quickActions.map(([id,label])=><a key={id} href={href(id)}>{label}</a>)}</div>
+    </section>
+    <ContentSections sections={otherSections?.slice(0,1)}/>
+    <section className="content-section"><h2>Popular PDF tools</h2>
+      {popularCopy?.body?.map((paragraph,index)=><p key={index}>{paragraph}</p>)}
+      <ToolLinks items={popular}/>
     </section>
     <section id="catalog" aria-labelledby="catalog-title">
       <div className="catalog-heading"><h2 id="catalog-title">{query.trim()?'Search results':'Tool library'}</h2><p>{count} {count===1?'tool':'tools'}</p></div>
-      <nav className="filter-nav" aria-label="Tool categories">{categories.map(name=><button type="button" aria-pressed={filter===name} key={name} onClick={()=>setFilter(name)}>{name}</button>)}</nav>
-      {groups.map(([category,list])=><section className="group" key={category}><div className="group-heading"><span className={'category-icon '+categoryColors[category]} aria-hidden="true">{categoryMarks[category]}</span><h3>{category}</h3></div><div className="grid">
+      <div className="filter-nav" role="group" aria-label="Filter tools">{['All tools','Starred'].map(name=><button type="button" aria-pressed={filter===name} key={name} onClick={()=>setFilter(name)}>{name}</button>)}</div>
+      {groups.map(([category,list])=>{
+        const hub=categoryHubs.get(category);
+        return <section className="group" key={category}><div className="group-heading"><span className={'category-icon '+categoryColors[category]} aria-hidden="true">{categoryMarks[category]}</span><h3>{hub?<a href={hub.path}>{category}</a>:category}</h3></div><div className="grid">
         {list.map(tool=><div className="tool-tile" key={tool.id}>
-          <a className="card" href={href(tool.id)}><div className="card-top"><span className={'tool-icon '+categoryColors[category]} aria-hidden="true">{categoryMarks[category]}</span><span className="format">{tool.format}</span></div><strong>{tool.title}</strong><span>{tool.description}</span></a>
+          <a className="card" href={href(tool.id)} aria-labelledby={'card-'+tool.id}><div className="card-top"><span className={'tool-icon '+categoryColors[category]} aria-hidden="true">{categoryMarks[category]}</span><span className="format">{tool.format}</span></div><strong id={'card-'+tool.id}>{tool.title}</strong><span>{tool.description}</span></a>
           <button className="favorite icon-button" type="button" aria-label={(favorites.includes(tool.id)?'Unstar ':'Star ')+tool.title} aria-pressed={favorites.includes(tool.id)} onClick={()=>toggle(tool.id)}>{favorites.includes(tool.id)?'★':'☆'}</button>
         </div>)}
-      </div></section>)}
+      </div></section>;})}
       {!groups.length&&<div className="empty-state"><strong>{filter==='Starred'&&!query?'No starred tools yet':'No matching tools'}</strong><p>{filter==='Starred'&&!query?'Star a tool to save it here.':'Try a different search term or category.'}</p></div>}
     </section>
-    <section id="common-questions" className="site-faq help-panel faq" aria-labelledby="site-faq-title">
-      <h2 id="site-faq-title">FreebiePDF FAQ</h2>
-      <p className="faq-intro">How offline access, privacy, and file processing work.</p>
-      {websiteFaq.map(([question,answer],index)=><details key={question} open={index===0?true:undefined}><summary>{question}</summary><p>{answer}</p></details>)}
-    </section>
+    <ContentSections sections={otherSections?.slice(1)}/>
+    <Faq id="common-questions" title={`${brandName} FAQ`} items={home.faq} firstOpen/>
   </>;
 }
 
-function ToolGuide({tool}){
-  const {steps,questions}=guide(tool);
-  const related=(Object.values(catalog).find(list=>list.some(entry=>entry.id===tool.id))??[]).filter(entry=>entry.id!==tool.id).slice(0,3);
+function ToolGuide({page}){
+  const {tool,steps,faq,related}=page;
+  const articles=guides.filter(article=>article.toolIds?.includes(tool.id));
   return <div className="tool-help">
     <section className="help-panel" aria-labelledby="how-title"><div className="section-label"><span aria-hidden="true">↳</span><h2 id="how-title">How to use it</h2></div>
       <ol className="steps">{steps.map(step=><li key={step}>{step}</li>)}</ol>
       <div className="output-note"><strong>Output</strong><span>{tool.format}</span></div>
     </section>
-    <section className="help-panel faq" aria-labelledby="faq-title"><div className="section-label"><span aria-hidden="true">?</span><h2 id="faq-title">Questions & answers</h2></div>
-      {questions.map(([question,answer])=><details key={question}><summary>{question}</summary><p>{answer}</p></details>)}
-    </section>
-    {related.length>0&&<section className="help-panel related" aria-label="Related tools"><h2>Related tools</h2><div>{related.map(entry=><a href={href(entry.id)} key={entry.id}>{entry.title}</a>)}</div></section>}
+    <Faq items={faq}/>
+    <a href="./#common-questions">Questions about privacy and offline use</a>
+    {related.length>0&&<section className="help-panel related"><h2>Related tools</h2><ToolLinks items={related}/></section>}
+    {articles.length>0&&<section className="help-panel related"><h2>Guides</h2><PageLinks items={articles}/></section>}
   </div>;
+}
+
+function ContentPage({page}){
+  const links=toolLinks(page.toolIds);
+  const articles=page.kind==='hub'?guides.filter(article=>article.toolIds?.some(id=>page.toolIds?.includes(id))):[];
+  return <article className="editorial">
+    <header className="tool-intro"><h1>{page.h1}</h1><p>{page.intro}</p></header>
+    {page.kind==='guide'&&links.length>0&&<p><a href={href(links[0][0])}>Open {links[0][1]}</a></p>}
+    {page.body?.map((paragraph,index)=><p key={index}>{paragraph}</p>)}
+    <ContentSections sections={page.sections}/>
+    {links.length>0&&<section className="content-section"><h2>{page.kind==='hub'?'PDF tools':'Tools in this guide'}</h2>
+      {page.kind==='hub'?<ul className="hub-tools">{links.map(([id,anchor])=><li key={id}><a href={href(id)}>{anchor}</a><p>{byId.get(id).description}</p></li>)}</ul>:<ToolLinks items={links}/>}
+    </section>}
+    <Faq items={page.faq}/>
+    {articles.length>0&&<section className="content-section"><h2>Guides</h2><PageLinks items={articles}/></section>}
+  </article>;
+}
+
+function SiteFooter(){
+  return <footer>
+    <nav aria-label="Site links">
+      <div><h2>Popular tools</h2><ToolLinks items={popular}/></div>
+      {hubs.length>0&&<div><h2>PDF tool collections</h2><PageLinks items={hubs}/></div>}
+      {guides.length>0&&<div><h2>Guides</h2><PageLinks items={guides}/></div>}
+    </nav>
+    <span>{brandName} · {all.length} tools</span><a href="./#common-questions">Privacy and offline access</a>
+  </footer>;
 }
 
 function Field({field,value,onChange}){
@@ -278,14 +406,17 @@ function Workflow({steps,update}){
   </div>;
 }
 
-function Workspace({tool}){
+function Workspace({page}){
+  const {tool}=page;
   const [queue,setQueue]=useState([]);
   const [options,setOptions]=useState(()=>initial(tool.fields));
-  const [steps,setSteps]=useState(()=>{
+  const [steps,setSteps]=useState(()=>tool.workflow?[newStep('rotate-pdf')]:[]);
+  useEffect(()=>{
+    if(!tool.workflow)return;
     const list=load('freebiepdf.web.workflow',[]);
     const saved=Array.isArray(list)?list.filter(item=>workflowTools.includes(item?.id)).slice(0,8).map(item=>({...newStep(item.id),preset:item.preset})):[];
-    return saved.length?saved:[newStep('rotate-pdf')];
-  });
+    if(saved.length)setSteps(saved);
+  },[tool.workflow]);
   const [busy,setBusy]=useState(false);
   const [drag,setDrag]=useState(false);
   const [status,setStatus]=useState('');
@@ -345,8 +476,7 @@ function Workspace({tool}){
     } finally {if(mounted.current)setBusy(false);running.current=false;}
   }
   return <section id="workspace">
-    <div className="tool-intro"><a className="backlink" href={href()}>All tools</a><span aria-hidden="true">/</span><span>{tool.title}</span>
-      <h1>{tool.title}</h1><p id="tool-description">{tool.description}</p></div>
+    <div className="tool-intro"><h1>{page.h1}</h1><p id="tool-description">{page.intro}</p></div>
     <div className="tool-layout"><form className="editor-panel" onSubmit={submit}>
       <div className="editor-header"><div><h2>{tool.noFile?'Document details':'Your files'}</h2><p>{tool.noFile?'Fill in the fields below.':'Choose a file from this device to get started.'}</p></div><span className="format">{tool.format}</span></div>
       {!tool.noFile&&<label className={'drop'+(drag?' over':'')} onDragOver={event=>{event.preventDefault();setDrag(true);}} onDragLeave={()=>setDrag(false)} onDrop={event=>{event.preventDefault();setDrag(false);add([...event.dataTransfer.files]);}}>
@@ -366,25 +496,25 @@ function Workspace({tool}){
       {speaking&&<button type="button" onClick={()=>{stopSpeech();setSpeaking(false);setStatus('Playback stopped.');}}>Stop playback</button>}
       {download&&<div id="result"><a className="download-link" download={download.name} href={download.url}>Download {download.name}</a>
         {download.isPdf&&<iframe title="Result PDF preview" src={download.url}/>}</div>}
-    </form><ToolGuide tool={tool}/></div>
+    </form><ToolGuide page={page}/></div>
   </section>;
 }
 
 export function App({serverRoute=''}={}){
-  const route=useRoute(serverRoute);
+  const page=pagesByPath.get(serverRoute)??{kind:'missing',path:serverRoute,h1:'Page not found'};
   const offline=useOffline();
-  const [filter,setFilter]=useState(()=>load('freebiepdf.web.dashboard-filter','All tools'));
+  const [filter,setFilter]=useState('All tools');
   const [sidebar,setSidebar]=useState(false);
   const shell=useRef(null), menu=useRef(null), drawer=useRef(null);
-  const [favorites,setFavorites]=useState(()=>{const value=load('freebiepdf.web.starred',[]);return Array.isArray(value)?value:[];});
-  const tool=byId.get(route);
+  const [favorites,setFavorites]=useState([]);
   useEffect(()=>{
-    setSidebar(false);
-    if(location.hash.startsWith('#/'))document.title=tool?tool.title+' | FreebiePDF':'Free Offline PDF Tools | FreebiePDF';
-  },[tool]);
-  useEffect(()=>{
+    const value=load('freebiepdf.web.starred',[]);
+    if(Array.isArray(value))setFavorites(value);
+    if(new URLSearchParams(location.search).get('view')==='starred')setFilter('Starred');
     if(location.hash==='#common-questions') document.getElementById('common-questions')?.scrollIntoView();
-  },[route]);
+    window.addEventListener('hashchange',redirectLegacyHash);
+    return ()=>window.removeEventListener('hashchange',redirectLegacyHash);
+  },[]);
   useEffect(()=>{
     if(!sidebar)return;
     function escape(event){if(event.key==='Escape')setSidebar(false);}
@@ -418,19 +548,26 @@ export function App({serverRoute=''}={}){
       return next;
     });
   }
-  function choose(name,event){
-    if(event&&(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey))return;
-    setFilter(name);store('freebiepdf.web.dashboard-filter',name);setSidebar(false);
-    if(event&&!route){event.preventDefault();window.scrollTo(0,0);}
-  }
   return <div className="app-shell">
+    <a className="skip-link" href={(page.path||href())+'#main-content'} inert={sidebar}>Skip to main content</a>
     {sidebar&&<DrawerScrim onClose={()=>setSidebar(false)}/>}
-    <Sidebar route={route} section={filter} choose={choose} favorites={favorites} visible={sidebar} close={()=>setSidebar(false)} drawer={drawer}/>
+    <Sidebar page={page} filter={filter} favorites={favorites} visible={sidebar} close={()=>setSidebar(false)} drawer={drawer}/>
     <div className="main-shell" ref={shell}>
-      <header className="topbar"><div><button className="menu-button icon-button" ref={menu} type="button" aria-label="Open navigation" aria-expanded={sidebar} onClick={()=>setSidebar(!sidebar)}>☰</button><a href={href()} onClick={event=>choose('All tools',event)}>Workspace</a>{tool&&<><span aria-hidden="true">/</span><strong>{tool.title}</strong></>}</div><span className="local"><i/>{offline}</span></header>
-      <main>{tool?<Workspace key={route} tool={tool}/>:route?<section className="empty-state"><h1>Tool not found</h1><a href={href()}>Browse all tools</a></section>:<Dashboard favorites={favorites} toggle={toggle} filter={filter} setFilter={setFilter}/>}</main>
-      <footer><span>FreebiePDF · {all.length} tools</span><span>Files are processed in your browser.</span></footer>
+      <header className="topbar"><div><button className="menu-button icon-button" ref={menu} type="button" aria-label="Open navigation" aria-controls="workspace-sidebar" aria-expanded={sidebar} onClick={()=>setSidebar(!sidebar)}>☰</button><a href={href()}>Workspace</a></div><span className="local"><i/>{offline}</span></header>
+      <main id="main-content" tabIndex={-1}>
+        {page.kind==='missing'?<section className="empty-state"><h1>{page.h1}</h1><a href={href()}>Browse all tools</a></section>:<>
+          <Breadcrumbs page={page}/>
+          {page.kind==='home'?<Dashboard favorites={favorites} toggle={toggle} filter={filter} setFilter={setFilter}/>
+            :page.kind==='tool'?<Workspace page={page}/>:<ContentPage page={page}/>}
+        </>}
+      </main>
+      <SiteFooter/>
     </div>
   </div>;
 }
-if(typeof document!=='undefined')createRoot(document.getElementById('root')).render(<App/>);
+if(typeof document!=='undefined'&&!redirectLegacyHash()){
+  const root=document.getElementById('root');
+  const app=<App serverRoute={root.dataset.route??browserRoute()}/>;
+  if(root.hasChildNodes())hydrateRoot(root,app);
+  else createRoot(root).render(app);
+}

@@ -10,15 +10,15 @@ async function unlocked(file,password=''){
   return new File([output.blob],output.name,{type:PDF});
 }
 const isEncryptedError=error=>error instanceof EncryptedPDFError || error?.message?.startsWith('Input document to `PDFDocument.load` is encrypted.');
-async function read(file,password){
+async function read(file,password,loadOptions){
   try{
-    return {doc:await PDFDocument.load(await file.arrayBuffer()),input:file};
+    return {doc:await PDFDocument.load(await file.arrayBuffer(),loadOptions),input:file};
   }catch(error){
     if(!isEncryptedError(error)) throw error;
   }
   const input=await unlocked(file,password);
   try{
-    return {doc:await PDFDocument.load(await input.arrayBuffer()),input};
+    return {doc:await PDFDocument.load(await input.arrayBuffer(),loadOptions),input};
   }catch(error){
     if(isEncryptedError(error)) throw new Error('The browser could not process this PDF’s encryption.');
     throw error;
@@ -343,7 +343,7 @@ export async function runTool(id,files,options={},progress=()=>{}){
           const zip=new JSZip(), uid='urn:uuid:'+crypto.randomUUID();
           zip.file('mimetype','application/epub+zip',{compression:'STORE'});
           zip.file('META-INF/container.xml','<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>');
-          zip.file('book.opf',`<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">${uid}</dc:identifier><dc:title>FreebiePDF document</dc:title><dc:language>en</dc:language><meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/,'Z')}</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="doc" href="doc.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="doc"/></spine></package>`);
+          zip.file('book.opf',`<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">${uid}</dc:identifier><dc:title>Anywhere PDF document</dc:title><dc:language>en</dc:language><meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/,'Z')}</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="doc" href="doc.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="doc"/></spine></package>`);
           zip.file('nav.xhtml','<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head><body><nav epub:type="toc"><ol><li><a href="doc.xhtml">Document</a></li></ol></nav></body></html>');
           zip.file('doc.xhtml','<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Document</title></head><body><pre>'+escapeHtml(full.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,''))+'</pre></body></html>');
           return result('document.epub',await zip.generateAsync({type:'uint8array'}),'application/epub+zip');
@@ -431,7 +431,8 @@ export async function runTool(id,files,options={},progress=()=>{}){
       return rendered;
     });
   }
-  const {doc,input}=await read(file,options.password);
+  const reportsMetadata=id==='pdf-size-analyzer'||(id==='privacy-scanner'&&preset!=='Clear standard metadata');
+  const {doc,input}=await read(file,options.password,reportsMetadata?{updateMetadata:false}:undefined);
   const indices=range(pages,doc.getPageCount());
   if(id==='merge-pdf'||id==='alternate-mix-pdf'){
     const others=await Promise.all(files.slice(1).map(file=>read(file,options.password)));

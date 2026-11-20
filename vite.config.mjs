@@ -1,17 +1,41 @@
 import {defineConfig} from 'vite';
-import {readdirSync,readFileSync,writeFileSync,cpSync} from 'node:fs';
+import {existsSync,readdirSync,readFileSync,writeFileSync,cpSync} from 'node:fs';
 import {resolve,relative,basename} from 'node:path';
 import {createHash} from 'node:crypto';
-import {prerender} from './prerender.mjs';
+import {deployment,emptySeoContent,prerender,seoContentPath} from './prerender.mjs';
 
-let outputDir;
+let projectRoot,outputDir,site,seoContent;
+const missingSeo='\0anywherepdf:empty-seo-content';
 
 export default defineConfig({
   base:'./',
   plugins:[{
-    name:'freebiepdf-offline',
+    name:'seo-content',
+    configResolved(config){
+      projectRoot=config.root;
+      if(config.command==='build'){
+        const path=seoContentPath(projectRoot);
+        // Share the same source snapshot with the prerenderer and the client bundle.
+        seoContent=existsSync(path)?readFileSync(path,'utf8'):emptySeoContent;
+      }
+    },
+    resolveId(id){
+      if(id!=='./seo-content.js')return;
+      const path=seoContentPath(projectRoot);
+      if(seoContent===undefined&&!existsSync(path))return missingSeo;
+      if(seoContent!==undefined)return path;
+    },
+    load(id){
+      if(id===missingSeo)return emptySeoContent;
+      if(seoContent!==undefined&&id===seoContentPath(projectRoot))return seoContent;
+    },
+  },{
+    name:'anywherepdf-offline',
     apply:'build',
-    configResolved(config){outputDir=resolve(config.root,config.build.outDir);},
+    configResolved(config){
+      site=deployment();
+      outputDir=resolve(config.root,config.build.outDir);
+    },
     async closeBundle(){
       const root=outputDir;
       for(const dir of ['cmaps','standard_fonts'])cpSync(resolve('node_modules/pdfjs-dist',dir),resolve(root,dir),{recursive:true});
@@ -24,17 +48,17 @@ export default defineConfig({
         });
       }
       for(const name of ['qpdf.js','qpdf.wasm','LICENSE'])cpSync(resolve('node_modules/@jspawn/qpdf-wasm',name),resolve(root,'qpdf',name));
-      await prerender(root);
+      await prerender(root,projectRoot,site,seoContent);
       // Every runtime file is essential, including 404.html. sw.js stays network-only so updates are not pinned.
       const paths=files(root).filter(path=>!['sw.js','_headers','_redirects'].includes(basename(path))).sort();
       const hash=createHash('sha256');
-      for(const path of paths) hash.update(readFileSync(path));
-      const cache='freebiepdf-'+hash.digest('hex').slice(0,16);
+      for(const path of paths) hash.update(relative(root,path)+'\0').update(readFileSync(path));
+      const cache=hash.digest('hex').slice(0,16);
       // Cloudflare Pages redirects /index.html to /, so cache directory URLs instead.
       const assets=paths.map(path=>('./'+relative(root,path).replaceAll('\\','/')).replace(/(^|\/)index\.html$/,'$1'));
       writeFileSync(resolve(root,'sw.js'),`
-const PREFIX='freebiepdf:'+self.registration.scope+':';
-const LEGACY_PREFIX='paperdesk:'+self.registration.scope+':';
+const PREFIX='anywherepdf:'+self.registration.scope+':';
+const LEGACY_PREFIXES=['freebiepdf:','paperdesk:'].map(prefix=>prefix+self.registration.scope+':');
 const NAME=PREFIX+${JSON.stringify(cache)};
 const ASSETS=${JSON.stringify(assets)};
 function pause(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
@@ -84,7 +108,16 @@ function navigation(request){
   else if(bare==='index.html')bare='';
   const directory=bare===''||bare.endsWith('/')?bare:bare+'/';
   const directoryAsset='./'+directory;
-  if(ASSETS.includes(directoryAsset)||!extension)return {lookup:scopeURL(directoryAsset).href,known:ASSETS.includes(directoryAsset)};
+  if(ASSETS.includes(directoryAsset)||!extension){
+    const canonical=scopeURL(directoryAsset);
+    const known=ASSETS.includes(directoryAsset);
+    if(known&&canonical.pathname!==url.pathname){
+      const redirect=new URL(canonical);
+      redirect.search=url.search;
+      return {lookup:canonical.href,known,redirect:redirect.href};
+    }
+    return {lookup:canonical.href,known};
+  }
   const file=new URL(url.href);
   file.search='';file.hash='';
   return {lookup:file.href,known:ASSETS.includes('./'+rel)};
@@ -93,19 +126,38 @@ async function fromNetwork(request){
   const response=await fetch(request);
   return response.redirected?clean(response):response;
 }
+async function navigate(request,cache){
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),3000);
+  try{
+    return await fetch(request,{signal:controller.signal,cache:'no-cache'});
+  }catch{
+    const target=navigation(request);
+    if(target.redirect)return Response.redirect(target.redirect,308);
+    const cached=await cache.match(target.lookup);
+    if(cached)return cached;
+    if(!target.known){
+      const page=await cache.match('./404.html');
+      if(page)return new Response(await page.blob(),{status:404,statusText:'Not Found',headers:page.headers});
+    }
+    return Response.error();
+  }finally{
+    clearTimeout(timeout);
+  }
+}
 self.addEventListener('install',event=>event.waitUntil((async()=>{
   const cache=await caches.open(NAME);
   try{await precache(cache);}catch(error){await caches.delete(NAME);throw error;}
   await self.skipWaiting();
 })()));
-self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>(key.startsWith(PREFIX)||key.startsWith(LEGACY_PREFIX))&&key!==NAME).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
+self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==NAME&&[PREFIX,...LEGACY_PREFIXES].some(prefix=>key.startsWith(prefix))).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
 self.addEventListener('message',event=>{
-  if(event.data?.type!=='freebiepdf-cache-check')return;
+  if(event.data?.type!=='anywherepdf-cache-check')return;
   event.waitUntil((async()=>{
     const cache=await caches.open(NAME);
     const hits=await Promise.all(ASSETS.map(url=>cache.match(url).then(Boolean)));
     const missing=hits.reduce((count,hit)=>count+(hit?0:1),0);
-    event.source?.postMessage({type:'freebiepdf-cache-status',id:event.data.id,ok:missing===0,missing});
+    event.source?.postMessage({type:'anywherepdf-cache-status',id:event.data.id,ok:missing===0,missing});
   })());
 });
 self.addEventListener('fetch',event=>{
@@ -113,18 +165,7 @@ self.addEventListener('fetch',event=>{
   if(request.method!=='GET'||new URL(request.url).origin!==self.location.origin)return;
   event.respondWith(caches.open(NAME).then(async cache=>{
     try{
-      if(request.mode==='navigate'){
-        const target=navigation(request);
-        const cached=await cache.match(target.lookup);
-        if(cached)return cached;
-        try{return await fromNetwork(request);}catch{
-          if(!target.known){
-            const page=await cache.match('./404.html');
-            if(page)return new Response(await page.blob(),{status:404,statusText:'Not Found',headers:page.headers});
-          }
-          return Response.error();
-        }
-      }
+      if(request.mode==='navigate')return await navigate(request,cache);
       return await cache.match(request)||await fromNetwork(request);
     }catch{return Response.error();}
   }).catch(()=>Response.error()));
