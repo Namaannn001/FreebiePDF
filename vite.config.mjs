@@ -1,62 +1,79 @@
-import {defineConfig} from 'vite';
-import {existsSync,readdirSync,readFileSync,writeFileSync,cpSync} from 'node:fs';
-import {resolve,relative,basename} from 'node:path';
-import {createHash} from 'node:crypto';
-import {deployment,emptySeoContent,prerender,seoContentPath} from './prerender.mjs';
+import { defineConfig } from 'vite';
+import { existsSync, readdirSync, readFileSync, writeFileSync, cpSync } from 'node:fs';
+import { resolve, relative, basename } from 'node:path';
+import { createHash } from 'node:crypto';
+import { deployment, emptySeoContent, prerender, seoContentPath } from './prerender.mjs';
 
-let projectRoot,outputDir,site,seoContent;
-const missingSeo='\0anywherepdf:empty-seo-content';
+let projectRoot, outputDir, site, seoContent;
+const missingSeo = '\0anywherepdf:empty-seo-content';
 
 export default defineConfig({
-  base:'./',
-  plugins:[{
-    name:'seo-content',
-    configResolved(config){
-      projectRoot=config.root;
-      if(config.command==='build'){
-        const path=seoContentPath(projectRoot);
-        // Share the same source snapshot with the prerenderer and the client bundle.
-        seoContent=existsSync(path)?readFileSync(path,'utf8'):emptySeoContent;
-      }
+  base: './',
+  plugins: [
+    {
+      name: 'seo-content',
+      configResolved(config) {
+        projectRoot = config.root;
+        if (config.command === 'build') {
+          const path = seoContentPath(projectRoot);
+          // Share the same source snapshot with the prerenderer and the client bundle.
+          seoContent = existsSync(path) ? readFileSync(path, 'utf8') : emptySeoContent;
+        }
+      },
+      resolveId(id) {
+        if (id !== './seo-content.js') return;
+        const path = seoContentPath(projectRoot);
+        if (seoContent === undefined && !existsSync(path)) return missingSeo;
+        if (seoContent !== undefined) return path;
+      },
+      load(id) {
+        if (id === missingSeo) return emptySeoContent;
+        if (seoContent !== undefined && id === seoContentPath(projectRoot)) return seoContent;
+      },
     },
-    resolveId(id){
-      if(id!=='./seo-content.js')return;
-      const path=seoContentPath(projectRoot);
-      if(seoContent===undefined&&!existsSync(path))return missingSeo;
-      if(seoContent!==undefined)return path;
-    },
-    load(id){
-      if(id===missingSeo)return emptySeoContent;
-      if(seoContent!==undefined&&id===seoContentPath(projectRoot))return seoContent;
-    },
-  },{
-    name:'anywherepdf-offline',
-    apply:'build',
-    configResolved(config){
-      site=deployment();
-      outputDir=resolve(config.root,config.build.outDir);
-    },
-    async closeBundle(){
-      const root=outputDir;
-      for(const dir of ['cmaps','standard_fonts'])cpSync(resolve('node_modules/pdfjs-dist',dir),resolve(root,dir),{recursive:true});
-      cpSync(resolve('node_modules/tesseract.js/dist/worker.min.js'),resolve(root,'ocr/worker.min.js'));
-      cpSync(resolve('node_modules/tesseract.js-core/tesseract-core-lstm.wasm.js'),resolve(root,'ocr/tesseract-core-lstm.wasm.js'));
-      function files(dir){
-        return readdirSync(dir,{withFileTypes:true}).flatMap(entry=>{
-          const path=resolve(dir,entry.name);
-          return entry.isDirectory()?files(path):[path];
-        });
-      }
-      for(const name of ['qpdf.js','qpdf.wasm','LICENSE'])cpSync(resolve('node_modules/@jspawn/qpdf-wasm',name),resolve(root,'qpdf',name));
-      await prerender(root,projectRoot,site,seoContent);
-      // Every runtime file is essential, including 404.html. sw.js stays network-only so updates are not pinned.
-      const paths=files(root).filter(path=>!['sw.js','_headers','_redirects'].includes(basename(path))).sort();
-      const hash=createHash('sha256');
-      for(const path of paths) hash.update(relative(root,path)+'\0').update(readFileSync(path));
-      const cache=hash.digest('hex').slice(0,16);
-      // Cloudflare Pages redirects /index.html to /, so cache directory URLs instead.
-      const assets=paths.map(path=>('./'+relative(root,path).replaceAll('\\','/')).replace(/(^|\/)index\.html$/,'$1'));
-      writeFileSync(resolve(root,'sw.js'),`
+    {
+      name: 'anywherepdf-offline',
+      apply: 'build',
+      configResolved(config) {
+        site = deployment();
+        outputDir = resolve(config.root, config.build.outDir);
+      },
+      async closeBundle() {
+        const root = outputDir;
+        for (const dir of ['cmaps', 'standard_fonts'])
+          cpSync(resolve('node_modules/pdfjs-dist', dir), resolve(root, dir), { recursive: true });
+        cpSync(
+          resolve('node_modules/tesseract.js/dist/worker.min.js'),
+          resolve(root, 'ocr/worker.min.js'),
+        );
+        cpSync(
+          resolve('node_modules/tesseract.js-core/tesseract-core-lstm.wasm.js'),
+          resolve(root, 'ocr/tesseract-core-lstm.wasm.js'),
+        );
+        function files(dir) {
+          return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+            const path = resolve(dir, entry.name);
+            return entry.isDirectory() ? files(path) : [path];
+          });
+        }
+        for (const name of ['qpdf.js', 'qpdf.wasm', 'LICENSE'])
+          cpSync(resolve('node_modules/@jspawn/qpdf-wasm', name), resolve(root, 'qpdf', name));
+        await prerender(root, projectRoot, site, seoContent);
+        // Every runtime file is essential, including 404.html. sw.js stays network-only so updates are not pinned.
+        const paths = files(root)
+          .filter(path => !['sw.js', '_headers', '_redirects'].includes(basename(path)))
+          .sort();
+        const hash = createHash('sha256');
+        for (const path of paths)
+          hash.update(relative(root, path) + '\0').update(readFileSync(path));
+        const cache = hash.digest('hex').slice(0, 16);
+        // Cloudflare Pages redirects /index.html to /, so cache directory URLs instead.
+        const assets = paths.map(path =>
+          ('./' + relative(root, path).replaceAll('\\', '/')).replace(/(^|\/)index\.html$/, '$1'),
+        );
+        writeFileSync(
+          resolve(root, 'sw.js'),
+          `
 const PREFIX='anywherepdf:'+self.registration.scope+':';
 const LEGACY_PREFIXES=['freebiepdf:','paperdesk:'].map(prefix=>prefix+self.registration.scope+':');
 const NAME=PREFIX+${JSON.stringify(cache)};
@@ -170,7 +187,9 @@ self.addEventListener('fetch',event=>{
     }catch{return Response.error();}
   }).catch(()=>Response.error()));
 });
-`);
-    }
-  }]
+`,
+        );
+      },
+    },
+  ],
 });

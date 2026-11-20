@@ -1,17 +1,19 @@
 // Real Chrome: installs the service worker, shows "Ready offline", then works with the server stopped.
 // Needs a build with SITE_URL set ("npm run test:build" first) and Chrome (see CHROME_PATH in README).
 import assert from 'node:assert/strict';
-import {after, before, describe, it} from 'node:test';
-import {dist, requireDist} from '../helpers.mjs';
-import {launchChrome, serveDist, sitemapPaths} from './chrome.mjs';
+import { after, before, describe, it } from 'node:test';
+import { dist, requireDist } from '../helpers.mjs';
+import { launchChrome, serveDist, sitemapPaths } from './chrome.mjs';
 
 requireDist('sw.js', '404.html', 'sitemap.xml');
 
-describe('offline in Chrome', {timeout: 120000}, () => {
+describe('offline in Chrome', { timeout: 120000 }, () => {
   let browser, site, hub, guide;
   before(async () => {
     const paths = sitemapPaths(dist);
-    hub = paths.find(path => path !== '/' && !path.startsWith('/tools/') && !path.startsWith('/guides/'));
+    hub = paths.find(
+      path => path !== '/' && !path.startsWith('/tools/') && !path.startsWith('/guides/'),
+    );
     guide = paths.find(path => path.startsWith('/guides/'));
     site = await serveDist(dist);
     browser = await launchChrome();
@@ -32,7 +34,11 @@ describe('offline in Chrome', {timeout: 120000}, () => {
     await site.stop();
     for (const path of [hub, guide].filter(Boolean)) {
       await browser.visit(site.origin + path);
-      assert.equal(await browser.evaluate("Boolean(document.querySelector('main h1')?.textContent)"), true, path);
+      assert.equal(
+        await browser.evaluate("Boolean(document.querySelector('main h1')?.textContent)"),
+        true,
+        path,
+      );
     }
   });
 
@@ -45,11 +51,17 @@ describe('offline in Chrome', {timeout: 120000}, () => {
     `);
     await browser.evaluate("document.querySelector('button.primary').click()");
     await browser.waitFor("Boolean(document.querySelector('#result a[download]'))");
-    assert.equal(await browser.evaluate("document.querySelector('#result a').download.endsWith('.pdf')"), true);
+    assert.equal(
+      await browser.evaluate("document.querySelector('#result a').download.endsWith('.pdf')"),
+      true,
+    );
   });
 
   it('serves the cached 404 for unknown routes', async () => {
     await browser.visit(site.origin + '/nonexistent/');
-    assert.equal(await browser.evaluate("document.querySelector('main h1').textContent"), 'Page not found');
+    assert.equal(
+      await browser.evaluate("document.querySelector('main h1').textContent"),
+      'Page not found',
+    );
   });
 });

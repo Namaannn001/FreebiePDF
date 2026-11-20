@@ -1,7 +1,7 @@
-import {existsSync, mkdtempSync, rmSync} from 'node:fs';
-import {tmpdir} from 'node:os';
-import {join, resolve} from 'node:path';
-import {fileURLToPath} from 'node:url';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 export const dist = join(root, 'dist');
@@ -12,7 +12,7 @@ export function requireDist(...files) {
     if (!existsSync(join(dist, file))) {
       throw new Error(
         `dist/${file} is missing. Build first with SITE_URL set, for example "npm run test:build" ` +
-        '(or SITE_URL=https://example.com/ npm run build).',
+          '(or SITE_URL=https://example.com/ npm run build).',
       );
     }
   }
@@ -21,5 +21,5 @@ export function requireDist(...files) {
 // Creates a temp dir under os.tmpdir() and returns it with a cleanup function.
 export function tempDir(prefix = 'anywherepdf-test-') {
   const dir = mkdtempSync(join(tmpdir(), prefix));
-  return {dir, cleanup: () => rmSync(dir, {force: true, recursive: true})};
+  return { dir, cleanup: () => rmSync(dir, { force: true, recursive: true }) };
 }

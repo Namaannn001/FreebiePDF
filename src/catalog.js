@@ -1,87 +1,425 @@
-const pdf='application/pdf,.pdf';
-const text=(key,label,placeholder='',type='text')=>({key,label,placeholder,type});
-const select=(key,label,choices)=>({key,label,choices});
-const pages=text('pages','Pages','All pages, or e.g. 1,3-5');
-const picked=text('pages','Pages','Blank keeps every page. A list exports only those pages, e.g. 1,3-5');
-const password=text('password','Current PDF password','If required','password');
-const label=text('text','Text');
-const dpi=select('dpi','Resolution',['144','72','300','600']);
-const positions=[text('x','Left offset (pt)','36','number'),text('y','Top offset (pt)','54','number')];
-const tool=(id,title,description,format,fields=[],extra={})=>({id,title,description,format,fields,accept:pdf,...extra});
-export const catalog={
-  'Organize':[
-    tool('merge-pdf','Merge PDF','Combine PDFs into one file, in the order you set.','PDF',[],{multiple:true}),
-    tool('split-pdf','Split PDF','Split a PDF into single pages, or save one page range.','ZIP / PDF',[text('pages','Pages','Blank = one PDF per page. Or a range such as 1,4-6')]),
-    tool('compress-pdf','Compress PDF','Make a PDF smaller. Each page is saved as an image.','PDF',[select('preset','Quality',['Light','Medium','Heavy']),password]),
-    tool('alternate-mix-pdf','Interleave PDFs','Alternate pages from two or more PDFs into one file.','PDF',[],{multiple:true}),
-    tool('extract-pdf-pages','Extract PDF pages','Save the pages you list as a new PDF.','PDF',[text('pages','Pages to keep','e.g. 1,4-6')]),
-    tool('delete-pdf-pages','Delete PDF pages','Remove the page numbers you list from a PDF.','PDF',[text('pages','Pages to delete','e.g. 2,5-7')]),
-    tool('organize-pages','Reorder PDF pages','Rearrange PDF pages by typing the order you want.','PDF',[text('pages','Page order','e.g. 4,1-3 or 8-5')]),
-    tool('rotate-pdf','Rotate PDF pages','Turn PDF pages 90, 180, or 270 degrees and save.','PDF',[pages,select('preset','Angle',['90','180','270'])]),
-    tool('split-pdf-by-text','Split PDF by text','Start a new PDF when a page contains your phrase.','ZIP',[pages,text('text','Phrase','e.g. Chapter'),password]),
-    tool('split-pdf-by-bookmarks','Split PDF by bookmarks','Make one PDF per top-level bookmark.','ZIP',[pages]),
-    tool('split-pdf-in-half','Split PDF in half','Divide a PDF into two files by page count.','ZIP',[pages]),
-    tool('split-pdf-by-size','Split PDF by size','Group PDF pages into parts under a size you set.','ZIP',[pages,text('text','Maximum part size (KB)','2048 (1024 KB = 1 MB)','number')]),
-    tool('multiple-pages-per-sheet','PDF pages per sheet','Place 2, 4, 6, 9, or 16 PDF pages on each A4 sheet.','PDF',[pages,select('preset','Pages per sheet',['4','2','6','9','16'])]),
-    tool('crop-resize-pdf','Crop PDF margins','Trim the same margin from all four sides of a page.','PDF',[pages,text('text','Margin (points)','18 (72 points = 1 inch)','number')]),
-    tool('resize-pdf','Resize PDF pages','Fit PDF pages onto A4, Letter, Legal, or A5.','PDF',[pages,select('preset','Paper size',['A4','Letter','Legal','A5'])]),
-    tool('flip-pdf','Flip PDF pages','Mirror PDF pages left to right, top to bottom, or both.','PDF',[picked,select('preset','Direction',['Horizontal','Vertical','Both']),password]),
-    tool('workflow','PDF workflow','Run up to eight PDF steps and download the last file.','PDF',[password],{workflow:true}),
-    tool('pdf-to-zip','Zip PDF files','Pack several PDFs into one ZIP, unchanged.','ZIP',[],{multiple:true}),
+const pdf = 'application/pdf,.pdf';
+const text = (key, label, placeholder = '', type = 'text') => ({ key, label, placeholder, type });
+const select = (key, label, choices) => ({ key, label, choices });
+const pages = text('pages', 'Pages', 'All pages, or e.g. 1,3-5');
+const picked = text(
+  'pages',
+  'Pages',
+  'Blank keeps every page. A list exports only those pages, e.g. 1,3-5',
+);
+const password = text('password', 'Current PDF password', 'If required', 'password');
+const label = text('text', 'Text');
+const dpi = select('dpi', 'Resolution', ['144', '72', '300', '600']);
+const positions = [
+  text('x', 'Left offset (pt)', '36', 'number'),
+  text('y', 'Top offset (pt)', '54', 'number'),
+];
+const tool = (id, title, description, format, fields = [], extra = {}) => ({
+  id,
+  title,
+  description,
+  format,
+  fields,
+  accept: pdf,
+  ...extra,
+});
+export const catalog = {
+  Organize: [
+    tool('merge-pdf', 'Merge PDF', 'Combine PDFs into one file, in the order you set.', 'PDF', [], {
+      multiple: true,
+    }),
+    tool(
+      'split-pdf',
+      'Split PDF',
+      'Split a PDF into single pages, or save one page range.',
+      'ZIP / PDF',
+      [text('pages', 'Pages', 'Blank = one PDF per page. Or a range such as 1,4-6')],
+    ),
+    tool(
+      'compress-pdf',
+      'Compress PDF',
+      'Make a PDF smaller. Each page is saved as an image.',
+      'PDF',
+      [select('preset', 'Quality', ['Light', 'Medium', 'Heavy']), password],
+    ),
+    tool(
+      'alternate-mix-pdf',
+      'Interleave PDFs',
+      'Alternate pages from two or more PDFs into one file.',
+      'PDF',
+      [],
+      { multiple: true },
+    ),
+    tool('extract-pdf-pages', 'Extract PDF pages', 'Save the pages you list as a new PDF.', 'PDF', [
+      text('pages', 'Pages to keep', 'e.g. 1,4-6'),
+    ]),
+    tool(
+      'delete-pdf-pages',
+      'Delete PDF pages',
+      'Remove the page numbers you list from a PDF.',
+      'PDF',
+      [text('pages', 'Pages to delete', 'e.g. 2,5-7')],
+    ),
+    tool(
+      'organize-pages',
+      'Reorder PDF pages',
+      'Rearrange PDF pages by typing the order you want.',
+      'PDF',
+      [text('pages', 'Page order', 'e.g. 4,1-3 or 8-5')],
+    ),
+    tool(
+      'rotate-pdf',
+      'Rotate PDF pages',
+      'Turn PDF pages 90, 180, or 270 degrees and save.',
+      'PDF',
+      [pages, select('preset', 'Angle', ['90', '180', '270'])],
+    ),
+    tool(
+      'split-pdf-by-text',
+      'Split PDF by text',
+      'Start a new PDF when a page contains your phrase.',
+      'ZIP',
+      [pages, text('text', 'Phrase', 'e.g. Chapter'), password],
+    ),
+    tool(
+      'split-pdf-by-bookmarks',
+      'Split PDF by bookmarks',
+      'Make one PDF per top-level bookmark.',
+      'ZIP',
+      [pages],
+    ),
+    tool(
+      'split-pdf-in-half',
+      'Split PDF in half',
+      'Divide a PDF into two files by page count.',
+      'ZIP',
+      [pages],
+    ),
+    tool(
+      'split-pdf-by-size',
+      'Split PDF by size',
+      'Group PDF pages into parts under a size you set.',
+      'ZIP',
+      [pages, text('text', 'Maximum part size (KB)', '2048 (1024 KB = 1 MB)', 'number')],
+    ),
+    tool(
+      'multiple-pages-per-sheet',
+      'PDF pages per sheet',
+      'Place 2, 4, 6, 9, or 16 PDF pages on each A4 sheet.',
+      'PDF',
+      [pages, select('preset', 'Pages per sheet', ['4', '2', '6', '9', '16'])],
+    ),
+    tool(
+      'crop-resize-pdf',
+      'Crop PDF margins',
+      'Trim the same margin from all four sides of a page.',
+      'PDF',
+      [pages, text('text', 'Margin (points)', '18 (72 points = 1 inch)', 'number')],
+    ),
+    tool('resize-pdf', 'Resize PDF pages', 'Fit PDF pages onto A4, Letter, Legal, or A5.', 'PDF', [
+      pages,
+      select('preset', 'Paper size', ['A4', 'Letter', 'Legal', 'A5']),
+    ]),
+    tool(
+      'flip-pdf',
+      'Flip PDF pages',
+      'Mirror PDF pages left to right, top to bottom, or both.',
+      'PDF',
+      [picked, select('preset', 'Direction', ['Horizontal', 'Vertical', 'Both']), password],
+    ),
+    tool(
+      'workflow',
+      'PDF workflow',
+      'Run up to eight PDF steps and download the last file.',
+      'PDF',
+      [password],
+      { workflow: true },
+    ),
+    tool('pdf-to-zip', 'Zip PDF files', 'Pack several PDFs into one ZIP, unchanged.', 'ZIP', [], {
+      multiple: true,
+    }),
   ],
-  'Edit & protect':[
-    tool('edit-pdf-text','Add text to PDF','Add a new line of text on top of PDF pages.','PDF',[pages,label,...positions]),
-    tool('sign-pdf','Sign a PDF','Stamp a typed name on PDF pages as a visual signature.','PDF',[pages,text('text','Signature text','Your name'),...positions]),
-    tool('add-watermark','Watermark a PDF','Stamp translucent text across the middle of PDF pages.','PDF',[pages,text('text','Watermark text','DRAFT')]),
-    tool('page-numbers','PDF page numbers','Add plain page numbers at the bottom of PDF pages.','PDF',[pages,text('text','Starting number','1','number')]),
-    tool('bates-numbering','Bates numbering PDF','Stamp sequential IDs such as DOC-000001 on PDF pages.','PDF',[pages,text('text','Prefix','DOC-')]),
-    tool('headers-footers','PDF footer','Add one centered line of text at the bottom of each page.','PDF',[pages,text('text','Footer text')]),
-    tool('fill-pdf-form','Fill a PDF form','Fill AcroForm fields from a JSON list of names and values.','PDF',[text('text','Field values as JSON','{"name":"Ada"}','textarea'),select('preset','Form mode',['Preserve fields','Flatten'])]),
-    tool('flatten-pdf','Flatten PDF','Save pages as images so fields and notes cannot be edited.','PDF',[picked,password]),
-    tool('invert-pdf','Invert PDF colors','Invert PDF colors, or save a grayscale or sepia copy.','PDF',[picked,select('preset','Color mode',['Negative','Grayscale','Sepia']),password]),
-    tool('edit-pdf-metadata','Edit PDF metadata','Change a PDF title, author, subject, or creator.','PDF',[text('text','Metadata as JSON','{"title":"Report","author":"Ada"}','textarea')]),
-    tool('privacy-scanner','PDF metadata','View standard PDF properties, or clear six of them.','JSON / PDF',[select('preset','Mode',['Report only','Clear standard metadata'])]),
-    tool('pdf-size-analyzer','PDF info','Report file size, page count, and standard PDF properties.','JSON'),
-    tool('redaction-checker','Find PDF text','List the PDF pages whose text contains a phrase.','JSON',[pages,text('text','Phrase to search'),password]),
-    tool('redact-pdf','Redact PDF text','Black out a phrase and save those pages as images.','PDF',[picked,text('text','Phrase to redact'),password]),
-    tool('encrypt-pdf','Protect PDF','Add an AES-256 password so a PDF asks for it before opening.','PDF',[password,text('text','New PDF password','','password')]),
-    tool('unlock-pdf','Unlock PDF','Save an unlocked copy when you know the PDF password.','PDF',[password]),
-    tool('repair-pdf','Repair PDF','Re-save a PDF the browser can still open.','PDF'),
+  'Edit & protect': [
+    tool('edit-pdf-text', 'Add text to PDF', 'Add a new line of text on top of PDF pages.', 'PDF', [
+      pages,
+      label,
+      ...positions,
+    ]),
+    tool(
+      'sign-pdf',
+      'Sign a PDF',
+      'Stamp a typed name on PDF pages as a visual signature.',
+      'PDF',
+      [pages, text('text', 'Signature text', 'Your name'), ...positions],
+    ),
+    tool(
+      'add-watermark',
+      'Watermark a PDF',
+      'Stamp translucent text across the middle of PDF pages.',
+      'PDF',
+      [pages, text('text', 'Watermark text', 'DRAFT')],
+    ),
+    tool(
+      'page-numbers',
+      'PDF page numbers',
+      'Add plain page numbers at the bottom of PDF pages.',
+      'PDF',
+      [pages, text('text', 'Starting number', '1', 'number')],
+    ),
+    tool(
+      'bates-numbering',
+      'Bates numbering PDF',
+      'Stamp sequential IDs such as DOC-000001 on PDF pages.',
+      'PDF',
+      [pages, text('text', 'Prefix', 'DOC-')],
+    ),
+    tool(
+      'headers-footers',
+      'PDF footer',
+      'Add one centered line of text at the bottom of each page.',
+      'PDF',
+      [pages, text('text', 'Footer text')],
+    ),
+    tool(
+      'fill-pdf-form',
+      'Fill a PDF form',
+      'Fill AcroForm fields from a JSON list of names and values.',
+      'PDF',
+      [
+        text('text', 'Field values as JSON', '{"name":"Ada"}', 'textarea'),
+        select('preset', 'Form mode', ['Preserve fields', 'Flatten']),
+      ],
+    ),
+    tool(
+      'flatten-pdf',
+      'Flatten PDF',
+      'Save pages as images so fields and notes cannot be edited.',
+      'PDF',
+      [picked, password],
+    ),
+    tool(
+      'invert-pdf',
+      'Invert PDF colors',
+      'Invert PDF colors, or save a grayscale or sepia copy.',
+      'PDF',
+      [picked, select('preset', 'Color mode', ['Negative', 'Grayscale', 'Sepia']), password],
+    ),
+    tool(
+      'edit-pdf-metadata',
+      'Edit PDF metadata',
+      'Change a PDF title, author, subject, or creator.',
+      'PDF',
+      [text('text', 'Metadata as JSON', '{"title":"Report","author":"Ada"}', 'textarea')],
+    ),
+    tool(
+      'privacy-scanner',
+      'PDF metadata',
+      'View standard PDF properties, or clear six of them.',
+      'JSON / PDF',
+      [select('preset', 'Mode', ['Report only', 'Clear standard metadata'])],
+    ),
+    tool(
+      'pdf-size-analyzer',
+      'PDF info',
+      'Report file size, page count, and standard PDF properties.',
+      'JSON',
+    ),
+    tool(
+      'redaction-checker',
+      'Find PDF text',
+      'List the PDF pages whose text contains a phrase.',
+      'JSON',
+      [pages, text('text', 'Phrase to search'), password],
+    ),
+    tool(
+      'redact-pdf',
+      'Redact PDF text',
+      'Black out a phrase and save those pages as images.',
+      'PDF',
+      [picked, text('text', 'Phrase to redact'), password],
+    ),
+    tool(
+      'encrypt-pdf',
+      'Protect PDF',
+      'Add an AES-256 password so a PDF asks for it before opening.',
+      'PDF',
+      [password, text('text', 'New PDF password', '', 'password')],
+    ),
+    tool(
+      'unlock-pdf',
+      'Unlock PDF',
+      'Save an unlocked copy when you know the PDF password.',
+      'PDF',
+      [password],
+    ),
+    tool('repair-pdf', 'Repair PDF', 'Re-save a PDF the browser can still open.', 'PDF'),
   ],
-  'Convert':[
-    tool('images-to-pdf','JPG to PDF','Put JPG, PNG, and other images on A4 pages in one PDF.','PDF',[],{accept:'image/*',multiple:true}),
-    tool('scan-to-pdf','Scan to PDF','Turn one camera photo into a one-page PDF.','PDF',[],{accept:'image/*',capture:true}),
-    tool('create-pdf','Create a PDF','Type Latin text and save it as an A4 PDF.','PDF',[text('text','Document text','','textarea')],{noFile:true}),
-    tool('txt-to-pdf','TXT to PDF','Turn a .txt file into an A4 PDF. Latin text.','PDF',[],{accept:'.txt,text/plain'}),
-    tool('markdown-to-pdf','Markdown to PDF','Print a Markdown file as plain text in a PDF.','PDF',[],{accept:'.md,.markdown'}),
-    tool('html-to-pdf','HTML to PDF','Print the visible text of a local HTML file as a PDF.','PDF',[],{accept:'.html,.htm'}),
-    tool('csv-to-pdf','CSV to PDF','Print a CSV file as plain text in a PDF.','PDF',[],{accept:'.csv,text/csv'}),
-    tool('word-to-pdf','Word to PDF','Print the text of a .docx file as a PDF.','PDF',[],{accept:'.docx'}),
-    tool('excel-to-pdf','Excel to PDF','Print saved .xlsx cell values as a PDF.','PDF',[],{accept:'.xlsx'}),
-    tool('pptx-to-pdf','PowerPoint to PDF','Print the text of .pptx slides as a PDF.','PDF',[],{accept:'.pptx'}),
-    tool('ebook-to-pdf','EPUB to PDF','Print the text of a DRM-free EPUB as a PDF.','PDF',[],{accept:'.epub'}),
-    tool('pdf-to-jpg','PDF to JPG','Render PDF pages as JPEG images.','JPG / ZIP',[picked,dpi,password]),
-    tool('pdf-to-png','PDF to PNG','Render PDF pages as PNG images on a white background.','PNG / ZIP',[picked,dpi,password]),
-    tool('pdf-to-image-zip','PDF pages to images','Save PDF pages as PNG files inside one ZIP.','ZIP',[picked,dpi,password]),
-    tool('pdf-to-word','PDF to Word','Save PDF text as a Word file, one paragraph per line.','DOCX',[pages,password]),
-    tool('pdf-to-excel','PDF to Excel','Save PDF text into Excel, one sheet per page.','XLSX',[pages,password]),
-    tool('pdf-to-pptx','PDF to PowerPoint','Save PDF text as slides, one slide per page.','PPTX',[pages,password]),
-    tool('pdf-to-html','PDF to HTML','Save PDF text as one standalone HTML page.','HTML',[pages,password]),
-    tool('pdf-to-epub','PDF to EPUB','Save PDF text as a one-section EPUB.','EPUB',[pages,password]),
-    tool('ocr-pdf','OCR PDF','Add an English text layer to scanned PDF pages.','PDF',[picked,password]),
-    tool('extract-text','Extract PDF text','Download the selectable text of a PDF as a .txt file.','TXT',[pages,password]),
-    tool('pdf-to-audio','Read PDF aloud','Speak PDF text with a voice installed on your device.','AUDIO',[pages,password]),
-    tool('summarize-pdf','Summarize PDF','Pick five frequent sentences from a PDF, on this device.','TXT',[pages,password]),
-    tool('compare-pdfs','Compare PDFs','Show the text of two PDFs side by side in an HTML report.','HTML',[pages,password],{multiple:true}),
+  Convert: [
+    tool(
+      'images-to-pdf',
+      'JPG to PDF',
+      'Put JPG, PNG, and other images on A4 pages in one PDF.',
+      'PDF',
+      [],
+      { accept: 'image/*', multiple: true },
+    ),
+    tool('scan-to-pdf', 'Scan to PDF', 'Turn one camera photo into a one-page PDF.', 'PDF', [], {
+      accept: 'image/*',
+      capture: true,
+    }),
+    tool(
+      'create-pdf',
+      'Create a PDF',
+      'Type Latin text and save it as an A4 PDF.',
+      'PDF',
+      [text('text', 'Document text', '', 'textarea')],
+      { noFile: true },
+    ),
+    tool('txt-to-pdf', 'TXT to PDF', 'Turn a .txt file into an A4 PDF. Latin text.', 'PDF', [], {
+      accept: '.txt,text/plain',
+    }),
+    tool(
+      'markdown-to-pdf',
+      'Markdown to PDF',
+      'Print a Markdown file as plain text in a PDF.',
+      'PDF',
+      [],
+      { accept: '.md,.markdown' },
+    ),
+    tool(
+      'html-to-pdf',
+      'HTML to PDF',
+      'Print the visible text of a local HTML file as a PDF.',
+      'PDF',
+      [],
+      { accept: '.html,.htm' },
+    ),
+    tool('csv-to-pdf', 'CSV to PDF', 'Print a CSV file as plain text in a PDF.', 'PDF', [], {
+      accept: '.csv,text/csv',
+    }),
+    tool('word-to-pdf', 'Word to PDF', 'Print the text of a .docx file as a PDF.', 'PDF', [], {
+      accept: '.docx',
+    }),
+    tool('excel-to-pdf', 'Excel to PDF', 'Print saved .xlsx cell values as a PDF.', 'PDF', [], {
+      accept: '.xlsx',
+    }),
+    tool(
+      'pptx-to-pdf',
+      'PowerPoint to PDF',
+      'Print the text of .pptx slides as a PDF.',
+      'PDF',
+      [],
+      { accept: '.pptx' },
+    ),
+    tool('ebook-to-pdf', 'EPUB to PDF', 'Print the text of a DRM-free EPUB as a PDF.', 'PDF', [], {
+      accept: '.epub',
+    }),
+    tool('pdf-to-jpg', 'PDF to JPG', 'Render PDF pages as JPEG images.', 'JPG / ZIP', [
+      picked,
+      dpi,
+      password,
+    ]),
+    tool(
+      'pdf-to-png',
+      'PDF to PNG',
+      'Render PDF pages as PNG images on a white background.',
+      'PNG / ZIP',
+      [picked, dpi, password],
+    ),
+    tool(
+      'pdf-to-image-zip',
+      'PDF pages to images',
+      'Save PDF pages as PNG files inside one ZIP.',
+      'ZIP',
+      [picked, dpi, password],
+    ),
+    tool(
+      'pdf-to-word',
+      'PDF to Word',
+      'Save PDF text as a Word file, one paragraph per line.',
+      'DOCX',
+      [pages, password],
+    ),
+    tool('pdf-to-excel', 'PDF to Excel', 'Save PDF text into Excel, one sheet per page.', 'XLSX', [
+      pages,
+      password,
+    ]),
+    tool(
+      'pdf-to-pptx',
+      'PDF to PowerPoint',
+      'Save PDF text as slides, one slide per page.',
+      'PPTX',
+      [pages, password],
+    ),
+    tool('pdf-to-html', 'PDF to HTML', 'Save PDF text as one standalone HTML page.', 'HTML', [
+      pages,
+      password,
+    ]),
+    tool('pdf-to-epub', 'PDF to EPUB', 'Save PDF text as a one-section EPUB.', 'EPUB', [
+      pages,
+      password,
+    ]),
+    tool('ocr-pdf', 'OCR PDF', 'Add an English text layer to scanned PDF pages.', 'PDF', [
+      picked,
+      password,
+    ]),
+    tool(
+      'extract-text',
+      'Extract PDF text',
+      'Download the selectable text of a PDF as a .txt file.',
+      'TXT',
+      [pages, password],
+    ),
+    tool(
+      'pdf-to-audio',
+      'Read PDF aloud',
+      'Speak PDF text with a voice installed on your device.',
+      'AUDIO',
+      [pages, password],
+    ),
+    tool(
+      'summarize-pdf',
+      'Summarize PDF',
+      'Pick five frequent sentences from a PDF, on this device.',
+      'TXT',
+      [pages, password],
+    ),
+    tool(
+      'compare-pdfs',
+      'Compare PDFs',
+      'Show the text of two PDFs side by side in an HTML report.',
+      'HTML',
+      [pages, password],
+      { multiple: true },
+    ),
   ],
-  'Business':[
-    tool('gst-invoice','Simple INR invoice','Make a one-item INR invoice PDF with one tax rate.','PDF',[
-      text('number','Invoice number'),text('date','Invoice date','','date'),text('supplier','Supplier'),
-      text('gstin','GSTIN'),text('buyer','Buyer'),text('item','Description'),text('quantity','Quantity','','number'),
-      text('price','Unit price (INR)','','number'),text('rate','Tax rate (%)','','number'),
-    ],{noFile:true}),
+  Business: [
+    tool(
+      'gst-invoice',
+      'Simple INR invoice',
+      'Make a one-item INR invoice PDF with one tax rate.',
+      'PDF',
+      [
+        text('number', 'Invoice number'),
+        text('date', 'Invoice date', '', 'date'),
+        text('supplier', 'Supplier'),
+        text('gstin', 'GSTIN'),
+        text('buyer', 'Buyer'),
+        text('item', 'Description'),
+        text('quantity', 'Quantity', '', 'number'),
+        text('price', 'Unit price (INR)', '', 'number'),
+        text('rate', 'Tax rate (%)', '', 'number'),
+      ],
+      { noFile: true },
+    ),
   ],
 };
-export const all=Object.values(catalog).flat();
-export const byId=new Map(all.map(entry=>[entry.id,entry]));
-export const workflowTools=['rotate-pdf','compress-pdf','add-watermark','page-numbers','flatten-pdf'];
+export const all = Object.values(catalog).flat();
+export const byId = new Map(all.map(entry => [entry.id, entry]));
+export const workflowTools = [
+  'rotate-pdf',
+  'compress-pdf',
+  'add-watermark',
+  'page-numbers',
+  'flatten-pdf',
+];

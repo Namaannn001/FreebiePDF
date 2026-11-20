@@ -1,13 +1,13 @@
 // Builds the site with SITE_URL set (no env tooling needed, works on every OS), then runs tests/build/*.test.mjs.
 // Pass --no-build to reuse an existing dist/.
-import {spawnSync} from 'node:child_process';
-import {fileURLToPath} from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const env = {...process.env, SITE_URL: process.env.SITE_URL ?? 'https://example.com/'};
+const env = { ...process.env, SITE_URL: process.env.SITE_URL ?? 'https://example.com/' };
 
 function run(args) {
-  const result = spawnSync(process.execPath, args, {cwd: root, env, stdio: 'inherit'});
+  const result = spawnSync(process.execPath, args, { cwd: root, env, stdio: 'inherit' });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
