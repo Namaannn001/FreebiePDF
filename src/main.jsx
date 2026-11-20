@@ -9,14 +9,12 @@ import './style.css';
 const href = id => id ? 'tools/'+id+'/' : './';
 export const brandName=seo.brand?.name??'Anywhere PDF';
 // Storage keys keep the legacy "freebiepdf.web.*" prefix so saved stars and workflows survive the rebrand.
-const rebrandLegacyCopy=text=>text.replace(/freebiepdf/gi,brandName);
-const rebrandLegacyFaq=faq=>faq.map(pair=>pair.map(rebrandLegacyCopy));
 const home={
   kind:'home',path:'',title:'Free Offline PDF Tools | '+brandName,
   meta:`Merge, split, compress, edit, and convert PDFs for free with ${all.length} browser-based tools. Files stay on your device and the tools work offline.`,
   h1:'PDF tools',hero:`Edit, merge, and convert PDFs free in your browser. Use all ${all.length} tools offline after the first visit.`,
   sections:[],...seo.home,
-  faq:seo.home?.faq??rebrandLegacyFaq(websiteFaq),
+  faq:seo.home?.faq??websiteFaq,
 };
 const toolPages=all.map(tool=>{
   const content=seo.toolSeo?.[tool.id];
@@ -26,7 +24,7 @@ const toolPages=all.map(tool=>{
     title:content?.title??`${tool.title} Online, Free | ${brandName}`,
     meta:content?.meta??`${tool.description} Use ${brandName} free in your browser. Works offline after the first visit.`,
     h1:content?.h1??tool.title,intro:content?.intro??tool.description,
-    steps:content?.steps??fallback.steps.map(rebrandLegacyCopy),faq:content?.faq??rebrandLegacyFaq(fallback.questions),
+    steps:content?.steps??fallback.steps,faq:content?.faq??fallback.questions,
     related:content?.related??(Object.values(catalog).find(list=>list.includes(tool))??[])
       .filter(entry=>entry.id!==tool.id).slice(0,3).map(entry=>[entry.id,entry.title]),
   };

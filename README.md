@@ -22,6 +22,14 @@ npm run preview -- --host 127.0.0.1
 
 The production build is written to **dist**. Source-based hosting can use `npm run build` as the build command and `dist` as the output directory. The source archive includes Netlify and Vercel configuration.
 
+## Testing
+
+Tests use the built-in Node test runner and need Node 22 or newer after `npm ci`.
+
+- `npm test` runs the unit tests in `tests/`. It needs no build.
+- `npm run test:build` builds with `SITE_URL=https://example.com/` and runs the tests that read `dist/` (service worker precache and behavior). Add `-- --no-build` to reuse an existing `dist/`.
+- `npm run test:browser` drives headless Chrome through `tests/browser/` (hydration on every page and offline use). It needs a `dist/` built with `SITE_URL` set, so run `npm run test:build` first. It needs Chrome or Chromium on Linux or macOS. Set `CHROME_PATH=/path/to/chrome` if it is not on your `PATH`. It adds no npm dependency.
+
 ## Configure search and social metadata
 
 The build writes crawlable HTML for the homepage, each tool, the category hubs, and the guides, with titles and descriptions taken from `src/seo-content.js`. To enable canonical URLs, the XML sitemap, and the social image URL, rebuild with the public HTTPS URL. From PowerShell:
