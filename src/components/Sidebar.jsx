@@ -1,10 +1,11 @@
 import React from 'react';
-import { byId } from '../catalog.js';
+import { byId, catalog } from '../catalog.js';
 import { href } from '../lib/href.js';
-import { categoryMarks, pinned } from '../lib/nav.js';
-import { brandName, categoryHubs, home } from '../lib/pages.js';
+import { pinned } from '../lib/nav.js';
+import { brandName, categoryLinks, home } from '../lib/pages.js';
+import { categoryIcons, Icon, iconFor } from './Icon.jsx';
 
-/** Workspace navigation: all tools, starred, categories, and pinned tools. */
+/** Workspace navigation: search, all tools, starred, categories, and pinned tools. */
 export function Sidebar({ page, filter, favorites, visible, close, drawer }) {
   const sideLink = path => (page.path === path ? 'side-link current' : 'side-link');
   const current = path => (page.path === path ? 'page' : undefined);
@@ -17,7 +18,7 @@ export function Sidebar({ page, filter, favorites, visible, close, drawer }) {
     >
       <div className="sidebar-brand">
         <a className="brand" href={href()}>
-          <img src="logo.svg" width="34" height="34" alt="" />
+          <img src="logo.svg" width="30" height="30" alt="" />
           {brandName}
         </a>
         <button
@@ -26,39 +27,47 @@ export function Sidebar({ page, filter, favorites, visible, close, drawer }) {
           aria-label="Close navigation"
           onClick={close}
         >
-          ×
+          <Icon name="x" size={18} />
         </button>
       </div>
+      <a className="side-search" href="./?search=1#catalog">
+        <Icon name="search" size={16} />
+        Find a tool
+        <kbd aria-hidden="true">Ctrl K</kbd>
+      </a>
       <nav aria-label="Workspace navigation">
         <div className="nav-block">
-          <p className="nav-label">Workspace</p>
           <a className={sideLink('')} aria-current={current('')} href={href()}>
-            <span aria-hidden="true">◫</span>All tools
+            <Icon name="grid" size={17} />
+            All tools
           </a>
           <a
             className={'side-link' + (page === home && filter === 'Starred' ? ' current' : '')}
             href="./?view=starred#catalog"
           >
-            <span aria-hidden="true">☆</span>Starred
+            <Icon name="star" size={17} />
+            Starred
             <span className="side-count">{favorites.length || ''}</span>
           </a>
         </div>
-        {categoryHubs.size > 0 && (
-          <div className="nav-block">
-            <p className="nav-label">Categories</p>
-            {[...categoryHubs].map(([name, hub]) => (
+        <div className="nav-block">
+          <p className="nav-label">Categories</p>
+          {[...categoryLinks].map(([name, link]) => {
+            const active = link.hub ? page.path === link.path : page === home && filter === name;
+            return (
               <a
-                className={sideLink(hub.path)}
-                aria-current={current(hub.path)}
-                href={hub.path}
+                className={'side-link' + (active ? ' current' : '')}
+                aria-current={link.hub && active ? 'page' : undefined}
+                href={link.path}
                 key={name}
               >
-                <span aria-hidden="true">{categoryMarks[name]}</span>
+                <Icon name={categoryIcons[name]} size={17} />
                 {name}
+                <span className="side-count">{catalog[name]?.length}</span>
               </a>
-            ))}
-          </div>
-        )}
+            );
+          })}
+        </div>
         <div className="nav-block nav-quick">
           <p className="nav-label">Quick access</p>
           {pinned.map(id => (
@@ -68,7 +77,7 @@ export function Sidebar({ page, filter, favorites, visible, close, drawer }) {
               href={href(id)}
               key={id}
             >
-              <span aria-hidden="true">·</span>
+              <Icon name={iconFor(id)} size={17} />
               {byId.get(id).title}
             </a>
           ))}
@@ -76,7 +85,7 @@ export function Sidebar({ page, filter, favorites, visible, close, drawer }) {
       </nav>
       <div className="sidebar-foot">
         <span className="privacy-mark" aria-hidden="true">
-          ◈
+          <Icon name="shield" size={17} />
         </span>
         <div>
           <strong>On-device processing</strong>

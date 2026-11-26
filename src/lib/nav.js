@@ -1,11 +1,20 @@
-/** Category swatches and the fixed sidebar, quick-action, and footer links. */
+/** Category tints and the fixed sidebar, start-with, quick-action, and footer links. */
 export const categoryColors = {
   Organize: 'violet',
   'Edit & protect': 'rose',
   Convert: 'blue',
   Business: 'amber',
 };
-export const categoryMarks = { Organize: '▤', 'Edit & protect': '◇', Convert: '⇄', Business: '▦' };
+export const startWith = [
+  'merge-pdf',
+  'compress-pdf',
+  'split-pdf',
+  'pdf-to-word',
+  'images-to-pdf',
+  'sign-pdf',
+  'ocr-pdf',
+  'encrypt-pdf',
+];
 export const pinned = ['merge-pdf', 'split-pdf', 'compress-pdf', 'ocr-pdf'];
 export const quickActions = [
   ['merge-pdf', 'Merge PDF'],

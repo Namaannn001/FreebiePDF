@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { catalog } from '../catalog.js';
 import { useMobileDrawer } from '../hooks/useMobileDrawer.js';
 import { useOffline } from '../hooks/useOffline.js';
 import { starredKey, useStored } from '../hooks/useStored.js';
 import { href } from '../lib/href.js';
-import { pagesByPath } from '../lib/pages.js';
+import { breadcrumbs, pagesByPath } from '../lib/pages.js';
 import { redirectLegacyHash } from '../lib/route.js';
 import { Breadcrumbs } from './Breadcrumbs.jsx';
 import { GuidePage } from './GuidePage.jsx';
@@ -28,7 +29,10 @@ export function App({ serverRoute = '' } = {}) {
   const { shell, menu, drawer } = useMobileDrawer(sidebar, setSidebar);
   const [favorites, setFavorites] = useStored(starredKey, [], Array.isArray);
   useEffect(() => {
-    if (new URLSearchParams(location.search).get('view') === 'starred') setFilter('Starred');
+    const params = new URLSearchParams(location.search);
+    if (params.get('view') === 'starred') setFilter('Starred');
+    else if (Object.hasOwn(catalog, params.get('category') ?? ''))
+      setFilter(params.get('category'));
     if (location.hash === '#common-questions')
       document.getElementById('common-questions')?.scrollIntoView();
     window.addEventListener('hashchange', redirectLegacyHash);
@@ -59,6 +63,9 @@ export function App({ serverRoute = '' } = {}) {
           menu={menu}
           sidebar={sidebar}
           offline={offline}
+          title={
+            page.kind === 'missing' ? page.h1 : (breadcrumbs(page).at(-1)?.name ?? 'All tools')
+          }
           onToggle={() => setSidebar(!sidebar)}
         />
         <main id="main-content" tabIndex={-1}>

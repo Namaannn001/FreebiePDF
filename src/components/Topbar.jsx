@@ -1,11 +1,16 @@
 import React from 'react';
-import { href } from '../lib/href.js';
+import { useTheme } from '../hooks/useTheme.js';
+import { Icon } from './Icon.jsx';
 
-/** Top bar with the menu button and the offline status. */
-export function Topbar({ menu, sidebar, offline, onToggle }) {
+const themeLabels = { system: 'System theme', light: 'Light theme', dark: 'Dark theme' };
+const themeIcons = { system: 'monitor', light: 'sun', dark: 'moon' };
+
+/** Top bar with the menu button, the current page title, the offline status, and the theme switch. */
+export function Topbar({ menu, sidebar, offline, onToggle, title }) {
+  const [theme, nextTheme] = useTheme();
   return (
     <header className="topbar">
-      <div>
+      <div className="topbar-title">
         <button
           className="menu-button icon-button"
           ref={menu}
@@ -15,14 +20,25 @@ export function Topbar({ menu, sidebar, offline, onToggle }) {
           aria-expanded={sidebar}
           onClick={onToggle}
         >
-          ☰
+          <Icon name="menu" size={20} />
         </button>
-        <a href={href()}>Workspace</a>
+        <strong>{title}</strong>
       </div>
-      <span className="local">
-        <i />
-        {offline}
-      </span>
+      <div className="topbar-actions">
+        <span className="local">
+          <i />
+          {offline}
+        </span>
+        <button
+          className="theme-button icon-button"
+          type="button"
+          onClick={nextTheme}
+          aria-label={themeLabels[theme] + '. Switch theme'}
+          title={themeLabels[theme]}
+        >
+          <Icon name={themeIcons[theme]} size={18} />
+        </button>
+      </div>
     </header>
   );
 }

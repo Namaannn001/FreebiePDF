@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 // Storage keys keep the legacy "freebiepdf.web.*" prefix so saved stars and workflows survive the rebrand.
 export const starredKey = 'freebiepdf.web.starred';
 export const workflowKey = 'freebiepdf.web.workflow';
+export const themeKey = 'freebiepdf.web.theme';
 
 /** Read JSON from localStorage, falling back to the pre-rebrand paperdesk.* key. */
 export const load = (key, fallback) => {

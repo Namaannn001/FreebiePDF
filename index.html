@@ -4,7 +4,19 @@
     <meta charset="UTF-8" />
     <base href="/" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+    <script>
+      try {
+        var t = JSON.parse(localStorage.getItem('freebiepdf.web.theme'));
+        if (t === 'light' || t === 'dark') {
+          document.documentElement.dataset.theme = t;
+          document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
+            m.content = t === 'light' ? '#ffffff' : '#0a0a0a';
+          });
+        }
+      } catch (e) {}
+    </script>
     <meta name="description" content="Private PDF tools that run in your browser." />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.png" type="image/png" sizes="192x192" />

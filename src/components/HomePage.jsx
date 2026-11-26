@@ -1,11 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { catalog } from '../catalog.js';
+import { byId, catalog } from '../catalog.js';
 import { href } from '../lib/href.js';
-import { categoryColors, categoryMarks, popular, quickActions } from '../lib/nav.js';
-import { brandName, categoryHubs, home } from '../lib/pages.js';
+import { categoryColors, popular, startWith } from '../lib/nav.js';
+import { brandName, categoryLinks, home } from '../lib/pages.js';
 import { ContentSections } from './ContentSections.jsx';
 import { Faq } from './Faq.jsx';
+import { categoryIcons, Icon, iconFor } from './Icon.jsx';
 import { ToolLinks } from './Links.jsx';
+
+const promises = [
+  ['shield', 'Files stay on this device'],
+  ['cloud', 'Usable without internet'],
+  ['zap', 'No account needed'],
+];
 
 /** Home page: search, quick actions, popular tools, and the filterable catalog. */
 export function HomePage({ favorites, toggle, filter, setFilter }) {
@@ -14,6 +21,7 @@ export function HomePage({ favorites, toggle, filter, setFilter }) {
   const popularCopy = home.sections?.find(section => section.heading === 'Popular PDF tools');
   const otherSections = home.sections?.filter(section => section !== popularCopy);
   useEffect(() => {
+    if (new URLSearchParams(location.search).has('search')) search.current?.focus();
     function shortcut(event) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
@@ -29,6 +37,7 @@ export function HomePage({ favorites, toggle, filter, setFilter }) {
       list.filter(
         tool =>
           (filter !== 'Starred' || favorites.includes(tool.id)) &&
+          (filter === 'All tools' || filter === 'Starred' || filter === name) &&
           [tool.title, tool.description, tool.id]
             .join(' ')
             .toLowerCase()
@@ -44,7 +53,7 @@ export function HomePage({ favorites, toggle, filter, setFilter }) {
           <h1>{home.h1}</h1>
           <p>{home.hero}</p>
           <label className="searchbox">
-            <span aria-hidden="true" className="search-icon" />
+            <Icon name="search" size={18} className="search-icon" />
             <span className="sr-only">Find a tool</span>
             <input
               ref={search}
@@ -55,14 +64,39 @@ export function HomePage({ favorites, toggle, filter, setFilter }) {
             />
             <kbd aria-hidden="true">Ctrl K</kbd>
           </label>
+          <ul className="promises">
+            {promises.map(([icon, text]) => (
+              <li key={text}>
+                <Icon name={icon} size={16} />
+                {text}
+              </li>
+            ))}
+          </ul>
         </div>
-        <div className="quick-panel">
-          <h2>Quick actions</h2>
-          {quickActions.map(([id, label]) => (
-            <a key={id} href={href(id)}>
-              {label}
-            </a>
-          ))}
+      </section>
+      <section className="start-with" aria-labelledby="start-title">
+        <h2 id="start-title" className="eyebrow">
+          Most used
+        </h2>
+        <div className="start-grid">
+          {startWith.map((id, index) => {
+            const tool = byId.get(id);
+            return (
+              <a
+                className={'start-tile' + (index === 0 ? ' featured' : '')}
+                href={href(id)}
+                key={id}
+              >
+                <span className="start-icon">
+                  <Icon name={iconFor(id)} size={20} />
+                </span>
+                <span>
+                  <strong>{tool.title}</strong>
+                  <small>{tool.description}</small>
+                </span>
+              </a>
+            );
+          })}
         </div>
       </section>
       <ContentSections sections={otherSections?.slice(0, 1)} />
@@ -81,7 +115,7 @@ export function HomePage({ favorites, toggle, filter, setFilter }) {
           </p>
         </div>
         <div className="filter-nav" role="group" aria-label="Filter tools">
-          {['All tools', 'Starred'].map(name => (
+          {['All tools', 'Starred', ...Object.keys(catalog)].map(name => (
             <button
               type="button"
               aria-pressed={filter === name}
@@ -93,12 +127,12 @@ export function HomePage({ favorites, toggle, filter, setFilter }) {
           ))}
         </div>
         {groups.map(([category, list]) => {
-          const hub = categoryHubs.get(category);
+          const hub = categoryLinks.get(category)?.hub;
           return (
             <section className="group" key={category}>
               <div className="group-heading">
-                <span className={'category-icon ' + categoryColors[category]} aria-hidden="true">
-                  {categoryMarks[category]}
+                <span className={'category-icon ' + categoryColors[category]}>
+                  <Icon name={categoryIcons[category]} size={16} />
                 </span>
                 <h3>{hub ? <a href={hub.path}>{category}</a> : category}</h3>
               </div>
@@ -106,17 +140,14 @@ export function HomePage({ favorites, toggle, filter, setFilter }) {
                 {list.map(tool => (
                   <div className="tool-tile" key={tool.id}>
                     <a className="card" href={href(tool.id)} aria-labelledby={'card-' + tool.id}>
-                      <div className="card-top">
-                        <span
-                          className={'tool-icon ' + categoryColors[category]}
-                          aria-hidden="true"
-                        >
-                          {categoryMarks[category]}
-                        </span>
+                      <span className={'tool-icon ' + categoryColors[category]}>
+                        <Icon name={iconFor(tool.id, category)} size={18} />
+                      </span>
+                      <span className="card-body">
+                        <strong id={'card-' + tool.id}>{tool.title}</strong>
+                        <span>{tool.description}</span>
                         <span className="format">{tool.format}</span>
-                      </div>
-                      <strong id={'card-' + tool.id}>{tool.title}</strong>
-                      <span>{tool.description}</span>
+                      </span>
                     </a>
                     <button
                       className="favorite icon-button"
@@ -125,7 +156,7 @@ export function HomePage({ favorites, toggle, filter, setFilter }) {
                       aria-pressed={favorites.includes(tool.id)}
                       onClick={() => toggle(tool.id)}
                     >
-                      {favorites.includes(tool.id) ? '★' : '☆'}
+                      <Icon name="star" size={16} />
                     </button>
                   </div>
                 ))}
