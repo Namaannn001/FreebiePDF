@@ -4,6 +4,7 @@ import { loadEngine } from '../run-tool.js';
 import { beginReadAloud, speechVoices, useReadAloud } from '../hooks/useReadAloud.js';
 import { load, store, workflowKey } from '../hooks/useStored.js';
 import { initial } from '../lib/initial.js';
+import { Icon, iconFor } from './Icon.jsx';
 import { ToolForm } from './ToolForm.jsx';
 import { ToolGuide } from './ToolGuide.jsx';
 import { newStep } from './WorkflowBuilder.jsx';
@@ -122,8 +123,27 @@ export function ToolPage({ page }) {
   return (
     <section id="workspace">
       <div className="tool-intro">
-        <h1>{page.h1}</h1>
-        <p id="tool-description">{page.intro}</p>
+        <span className="tool-badge">
+          <Icon name={iconFor(tool.id)} size={24} />
+        </span>
+        <div>
+          <h1>{page.h1}</h1>
+          <p id="tool-description">{page.intro}</p>
+          <ul className="promises">
+            <li>
+              <Icon name="shield" size={16} />
+              Files stay on this device
+            </li>
+            <li>
+              <Icon name="cloud" size={16} />
+              Usable without internet
+            </li>
+            <li>
+              <Icon name="file" size={16} />
+              Output {tool.format}
+            </li>
+          </ul>
+        </div>
       </div>
       <div className="tool-layout">
         <ToolForm

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Field } from './Field.jsx';
+import { Icon } from './Icon.jsx';
 import { WorkflowBuilder } from './WorkflowBuilder.jsx';
 
 /** File drop zone, options, run button, status, playback, and download. */
@@ -64,43 +65,54 @@ export function ToolForm({
               event.target.value = '';
             }}
           />
-          <span className="upload-mark" aria-hidden="true">
-            ⇧
+          <span className="upload-mark">
+            <Icon name="upload" size={24} />
           </span>
           <b>{tool.multiple ? 'Choose files' : 'Choose a file'}</b>
-          <span>or drag and drop here</span>
+          <span>or drag and drop {tool.multiple ? 'them' : 'it'} here</span>
         </label>
       )}
       <ul id="queue">
         {queue.map((file, index) => (
           <li key={file.name + '-' + index}>
+            <Icon name="file" size={18} className="queue-icon" />
             <span>
-              {file.name} · {Math.max(1, Math.round(file.size / 1024))} KB
+              {file.name}
+              <small>{Math.max(1, Math.round(file.size / 1024))} KB</small>
             </span>
             {tool.multiple && (
               <>
                 <button
+                  className="icon-button"
                   type="button"
+                  aria-label={'Move ' + file.name + ' up'}
+                  title="Move up"
                   disabled={busy || index === 0}
                   onClick={() => move(index, -1)}
                 >
-                  Up
+                  <Icon name="up" size={16} />
                 </button>
                 <button
+                  className="icon-button"
                   type="button"
+                  aria-label={'Move ' + file.name + ' down'}
+                  title="Move down"
                   disabled={busy || index === queue.length - 1}
                   onClick={() => move(index, 1)}
                 >
-                  Down
+                  <Icon name="down" size={16} />
                 </button>
               </>
             )}
             <button
+              className="icon-button"
               type="button"
+              aria-label={'Remove ' + file.name}
+              title="Remove"
               disabled={busy}
               onClick={() => setQueue(queue.filter((_, i) => i !== index))}
             >
-              Remove
+              <Icon name="trash" size={16} />
             </button>
           </li>
         ))}
@@ -136,9 +148,16 @@ export function ToolForm({
       )}
       {download && (
         <div id="result">
-          <a className="download-link" download={download.name} href={download.url}>
-            Download {download.name}
-          </a>
+          <div className="result-head">
+            <span className="result-check">
+              <Icon name="check" size={18} />
+            </span>
+            <span className="result-name">{download.name}</span>
+            <a className="download-link" download={download.name} href={download.url}>
+              <Icon name="download" size={17} />
+              Download
+            </a>
+          </div>
           {download.isPdf && <iframe title="Result PDF preview" src={download.url} />}
         </div>
       )}

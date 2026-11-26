@@ -3,7 +3,7 @@ import { useMobileDrawer } from '../hooks/useMobileDrawer.js';
 import { useOffline } from '../hooks/useOffline.js';
 import { starredKey, useStored } from '../hooks/useStored.js';
 import { href } from '../lib/href.js';
-import { pagesByPath } from '../lib/pages.js';
+import { breadcrumbs, pagesByPath } from '../lib/pages.js';
 import { redirectLegacyHash } from '../lib/route.js';
 import { Breadcrumbs } from './Breadcrumbs.jsx';
 import { GuidePage } from './GuidePage.jsx';
@@ -59,6 +59,9 @@ export function App({ serverRoute = '' } = {}) {
           menu={menu}
           sidebar={sidebar}
           offline={offline}
+          title={
+            page.kind === 'missing' ? page.h1 : (breadcrumbs(page).at(-1)?.name ?? 'All tools')
+          }
           onToggle={() => setSidebar(!sidebar)}
         />
         <main id="main-content" tabIndex={-1}>
