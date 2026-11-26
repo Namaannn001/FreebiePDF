@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { catalog } from '../catalog.js';
 import { useMobileDrawer } from '../hooks/useMobileDrawer.js';
 import { useOffline } from '../hooks/useOffline.js';
 import { starredKey, useStored } from '../hooks/useStored.js';
@@ -28,7 +29,10 @@ export function App({ serverRoute = '' } = {}) {
   const { shell, menu, drawer } = useMobileDrawer(sidebar, setSidebar);
   const [favorites, setFavorites] = useStored(starredKey, [], Array.isArray);
   useEffect(() => {
-    if (new URLSearchParams(location.search).get('view') === 'starred') setFilter('Starred');
+    const params = new URLSearchParams(location.search);
+    if (params.get('view') === 'starred') setFilter('Starred');
+    else if (Object.hasOwn(catalog, params.get('category') ?? ''))
+      setFilter(params.get('category'));
     if (location.hash === '#common-questions')
       document.getElementById('common-questions')?.scrollIntoView();
     window.addEventListener('hashchange', redirectLegacyHash);

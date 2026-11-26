@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { byId, catalog } from '../catalog.js';
 import { href } from '../lib/href.js';
 import { categoryColors, popular, startWith } from '../lib/nav.js';
-import { brandName, categoryHubs, home } from '../lib/pages.js';
+import { brandName, categoryLinks, home } from '../lib/pages.js';
 import { ContentSections } from './ContentSections.jsx';
 import { Faq } from './Faq.jsx';
 import { categoryIcons, Icon, iconFor } from './Icon.jsx';
@@ -127,7 +127,7 @@ export function HomePage({ favorites, toggle, filter, setFilter }) {
           ))}
         </div>
         {groups.map(([category, list]) => {
-          const hub = categoryHubs.get(category);
+          const hub = categoryLinks.get(category)?.hub;
           return (
             <section className="group" key={category}>
               <div className="group-heading">

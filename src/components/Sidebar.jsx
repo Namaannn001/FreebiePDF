@@ -2,7 +2,7 @@ import React from 'react';
 import { byId, catalog } from '../catalog.js';
 import { href } from '../lib/href.js';
 import { pinned } from '../lib/nav.js';
-import { brandName, categoryHubs, home } from '../lib/pages.js';
+import { brandName, categoryLinks, home } from '../lib/pages.js';
 import { categoryIcons, Icon, iconFor } from './Icon.jsx';
 
 /** Workspace navigation: search, all tools, starred, categories, and pinned tools. */
@@ -50,23 +50,24 @@ export function Sidebar({ page, filter, favorites, visible, close, drawer }) {
             <span className="side-count">{favorites.length || ''}</span>
           </a>
         </div>
-        {categoryHubs.size > 0 && (
-          <div className="nav-block">
-            <p className="nav-label">Categories</p>
-            {[...categoryHubs].map(([name, hub]) => (
+        <div className="nav-block">
+          <p className="nav-label">Categories</p>
+          {[...categoryLinks].map(([name, link]) => {
+            const active = link.hub ? page.path === link.path : page === home && filter === name;
+            return (
               <a
-                className={sideLink(hub.path)}
-                aria-current={current(hub.path)}
-                href={hub.path}
+                className={'side-link' + (active ? ' current' : '')}
+                aria-current={link.hub && active ? 'page' : undefined}
+                href={link.path}
                 key={name}
               >
                 <Icon name={categoryIcons[name]} size={17} />
                 {name}
                 <span className="side-count">{catalog[name]?.length}</span>
               </a>
-            ))}
-          </div>
-        )}
+            );
+          })}
+        </div>
         <div className="nav-block nav-quick">
           <p className="nav-label">Quick access</p>
           {pinned.map(id => (

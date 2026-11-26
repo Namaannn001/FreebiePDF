@@ -78,6 +78,23 @@ const categoryHubs = new Map(
   }),
 );
 
+/**
+ * Navigation target per category. A category gets its hub page unless an earlier category already
+ * uses that hub; otherwise it opens the home tool library filtered to that category.
+ */
+const categoryLinks = new Map();
+for (const name of Object.keys(catalog)) {
+  const hub = categoryHubs.get(name);
+  const shared = hub && [...categoryLinks.values()].some(link => link.hub === hub);
+  categoryLinks.set(
+    name,
+    hub && !shared
+      ? { hub, path: hub.path }
+      : { hub: null, path: './?category=' + encodeURIComponent(name) + '#catalog' },
+  );
+}
+export { categoryLinks };
+
 /** Home, the matching category hub, and the current page. Empty on the home page. */
 export function breadcrumbs(page) {
   if (page === home) return [];
