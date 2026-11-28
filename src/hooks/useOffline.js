@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { afterPageLoad } from '../lib/afterPageLoad.js';
 
 /** Short status string for the top bar. */
 export function offlineLabel(kind, onLine) {
@@ -43,6 +44,7 @@ export function watchOffline(setState) {
       show('unsupported');
       return;
     }
+    show('preparing');
     try {
       const registration = await navigator.serviceWorker.register(
         new URL('./sw.js', document.baseURI),
@@ -69,12 +71,11 @@ export function watchOffline(setState) {
     navigator.serviceWorker?.addEventListener('controllerchange', confirm);
     confirm();
   }
-  if (document.readyState === 'complete') start();
-  else window.addEventListener('load', start, { once: true });
+  const cancelStart = afterPageLoad(start);
   window.addEventListener('offline', offline);
   return () => {
     cancel = true;
-    window.removeEventListener('load', start);
+    cancelStart();
     window.removeEventListener('online', confirm);
     window.removeEventListener('offline', offline);
     navigator.serviceWorker?.removeEventListener('controllerchange', confirm);

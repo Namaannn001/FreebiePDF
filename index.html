@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <base href="/" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f3f3f3" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0c0c0c" media="(prefers-color-scheme: dark)" />
     <script>
       try {
         var t = JSON.parse(localStorage.getItem('freebiepdf.web.theme'));
         if (t === 'light' || t === 'dark') {
           document.documentElement.dataset.theme = t;
           document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
-            m.content = t === 'light' ? '#ffffff' : '#0a0a0a';
+            m.content = t === 'light' ? '#f3f3f3' : '#0c0c0c';
           });
         }
       } catch (e) {}

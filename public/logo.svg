@@ -4,20 +4,20 @@
     <clipPath id="front"><rect x="0" y="256" width="512" height="256"/></clipPath>
     <clipPath id="page"><path d="M184 116h104l60 60v212a16 16 0 0 1-16 16H184a16 16 0 0 1-16-16V132a16 16 0 0 1 16-16z"/></clipPath>
   </defs>
-  <rect width="512" height="512" rx="116" fill="#d7e89b"/>
+  <rect width="512" height="512" rx="116" fill="#dedede"/>
   <g transform="rotate(-24 256 256)">
-    <ellipse cx="256" cy="256" rx="190" ry="66" fill="none" stroke="#11140d" stroke-width="18" clip-path="url(#back)"/>
+    <ellipse cx="256" cy="256" rx="190" ry="66" fill="none" stroke="#202020" stroke-width="18" clip-path="url(#back)"/>
   </g>
-  <path d="M184 116h104l60 60v212a16 16 0 0 1-16 16H184a16 16 0 0 1-16-16V132a16 16 0 0 1 16-16z" fill="#11140d"/>
-  <path d="M288 116v44a16 16 0 0 0 16 16h44z" fill="#7d8a52"/>
+  <path d="M184 116h104l60 60v212a16 16 0 0 1-16 16H184a16 16 0 0 1-16-16V132a16 16 0 0 1 16-16z" fill="#202020"/>
+  <path d="M288 116v44a16 16 0 0 0 16 16h44z" fill="#7f7f7f"/>
   <g clip-path="url(#page)"><g transform="rotate(-24 256 256)" clip-path="url(#front)">
-    <ellipse cx="256" cy="256" rx="190" ry="66" fill="none" stroke="#d7e89b" stroke-width="40"/>
+    <ellipse cx="256" cy="256" rx="190" ry="66" fill="none" stroke="#dedede" stroke-width="40"/>
   </g></g>
   <g transform="rotate(-24 256 256)" clip-path="url(#front)">
-    <ellipse cx="256" cy="256" rx="190" ry="66" fill="none" stroke="#11140d" stroke-width="18"/>
+    <ellipse cx="256" cy="256" rx="190" ry="66" fill="none" stroke="#202020" stroke-width="18"/>
   </g>
   <g transform="rotate(-24 256 256)">
-    <circle cx="390" cy="303" r="30" fill="#d7e89b"/>
-    <circle cx="390" cy="303" r="19" fill="#11140d"/>
+    <circle cx="390" cy="303" r="30" fill="#dedede"/>
+    <circle cx="390" cy="303" r="19" fill="#202020"/>
   </g>
 </svg>

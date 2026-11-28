@@ -25,9 +25,13 @@ export function Topbar({ menu, sidebar, offline, onToggle, title }) {
         <strong>{title}</strong>
       </div>
       <div className="topbar-actions">
-        <span className="local">
-          <i />
-          {offline}
+        <span className="local" role="status">
+          {offline && (
+            <>
+              <i />
+              {offline}
+            </>
+          )}
         </span>
         <button
           className="theme-button icon-button"

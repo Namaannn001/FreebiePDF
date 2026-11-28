@@ -6,7 +6,7 @@ import { load, store, workflowKey } from '../hooks/useStored.js';
 import { initial } from '../lib/initial.js';
 import { Icon, iconFor } from './Icon.jsx';
 import { ToolForm } from './ToolForm.jsx';
-import { ToolGuide } from './ToolGuide.jsx';
+import { ToolGuide, ToolInstructions } from './ToolGuide.jsx';
 import { newStep } from './WorkflowBuilder.jsx';
 
 /** Tool workspace: file queue, options, processing, and the how-to guide. */
@@ -168,8 +168,9 @@ export function ToolPage({ page }) {
           setStatus={setStatus}
           download={download}
         />
-        <ToolGuide page={page} />
+        <ToolInstructions steps={page.steps} format={tool.format} />
       </div>
+      <ToolGuide page={page} />
     </section>
   );
 }

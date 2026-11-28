@@ -32,9 +32,7 @@ export function ToolForm({
         <div>
           <h2>{tool.noFile ? 'Document details' : 'Your files'}</h2>
           <p>
-            {tool.noFile
-              ? 'Fill in the fields below.'
-              : 'Choose a file from this device to get started.'}
+            {tool.noFile ? 'Enter the details for your PDF.' : 'Select files from this device.'}
           </p>
         </div>
         <span className="format">{tool.format}</span>

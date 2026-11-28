@@ -81,7 +81,13 @@ export function notFoundDocument(home = homeHref(), brand = 'Anywhere PDF') {
     'apple-touch-icon.png"><link rel="manifest" href="' +
     esc(home) +
     'manifest.webmanifest">' +
-    '<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#101010;color:#ededed;font:16px/1.5 system-ui,sans-serif;text-align:center}main{padding:24px}h1{font-size:1.5rem;margin:8px 0}a{color:#e0e0e0}</style>' +
+    `<style>
+      :root{color-scheme:light;--paper:#f3f3f3;--card:#fff;--ink:#171717;--line:#e2e2e2;--link:#171717;--accent:#171717}
+      @media(prefers-color-scheme:dark){:root{color-scheme:dark;--paper:#0c0c0c;--card:#202020;--ink:#f2f2f2;--line:#3a3a3a;--link:#dedede;--accent:#dedede}}
+      body{margin:0;min-height:100dvh;display:grid;place-items:center;box-sizing:border-box;padding:24px;background:var(--paper);color:var(--ink);font:16px/1.55 "Segoe UI",system-ui,sans-serif}
+      main{width:min(100%,26rem);box-sizing:border-box;padding:32px;background:var(--card);border:1px solid var(--line);border-block-start:4px solid var(--accent);border-radius:12px;box-shadow:4px 4px var(--line)}
+      strong{font-weight:600}h1{font-size:2rem;font-weight:500;line-height:1.1;margin:12px 0}p{margin:16px 0 0}a{color:var(--link);text-underline-offset:3px}a:focus-visible{outline:2px solid var(--link);outline-offset:4px}
+    </style>` +
     '</head><body><main><strong>' +
     esc(brand) +
     '</strong><h1>Page not found</h1><p><a href="' +

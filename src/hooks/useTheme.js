@@ -1,7 +1,7 @@
 import { themeKey, useStored } from './useStored.js';
 
 export const themes = ['system', 'light', 'dark'];
-const surface = { light: '#ffffff', dark: '#0a0a0a' };
+const surface = { light: '#f3f3f3', dark: '#0c0c0c' };
 
 /** Set the theme on <html>. "system" removes the override so CSS follows prefers-color-scheme. */
 export function applyTheme(theme, root = document.documentElement) {

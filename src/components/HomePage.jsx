@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { byId, catalog } from '../catalog.js';
+import { afterPageLoad } from '../lib/afterPageLoad.js';
 import { href } from '../lib/href.js';
 import { categoryColors, popular, startWith } from '../lib/nav.js';
 import { brandName, categoryLinks, home } from '../lib/pages.js';
@@ -14,10 +15,69 @@ const promises = [
   ['zap', 'No account needed'],
 ];
 
+function PdfEditorPreview() {
+  const container = useRef(null);
+  const player = useRef(null);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    let disposed = false;
+    let animation;
+    const cancelLoad = afterPageLoad(async () => {
+      try {
+        const [{ default: lottie }, { default: animationData }] = await Promise.all([
+          import('lottie-web/build/player/lottie_light.min.js'),
+          import('../pdf-editor-animation.json'),
+        ]);
+        if (disposed) return;
+        animation = lottie.loadAnimation({
+          container: container.current,
+          renderer: 'svg',
+          loop: true,
+          autoplay: false,
+          animationData: structuredClone(animationData),
+        });
+        animation.addEventListener('DOMLoaded', () => {
+          if (disposed) return;
+          player.current = animation;
+          animation.play();
+          setPlaying(true);
+        });
+      } catch {
+        // The hero remains usable if the decorative animation cannot load.
+      }
+    });
+    return () => {
+      disposed = true;
+      cancelLoad();
+      player.current = null;
+      animation?.destroy();
+    };
+  }, []);
+
+  return (
+    <button
+      type="button"
+      className="editor-animation"
+      aria-label={playing ? 'Pause PDF editor animation' : 'Play PDF editor animation'}
+      onClick={() => {
+        const animation = player.current;
+        if (!animation) return;
+        if (playing) animation.pause();
+        else animation.play();
+        setPlaying(!playing);
+      }}
+    >
+      <span ref={container} aria-hidden="true" />
+    </button>
+  );
+}
+
 /** Home page: search, quick actions, popular tools, and the filterable catalog. */
 export function HomePage({ favorites, toggle, filter, setFilter }) {
   const [query, setQuery] = useState('');
   const search = useRef(null);
+  const catalogTitle = useRef(null);
   const popularCopy = home.sections?.find(section => section.heading === 'Popular PDF tools');
   const otherSections = home.sections?.filter(section => section !== popularCopy);
   useEffect(() => {
@@ -50,28 +110,43 @@ export function HomePage({ favorites, toggle, filter, setFilter }) {
     <>
       <section className="hero">
         <div className="hero-content">
-          <h1>{home.h1}</h1>
-          <p>{home.hero}</p>
-          <label className="searchbox">
-            <Icon name="search" size={18} className="search-icon" />
-            <span className="sr-only">Find a tool</span>
-            <input
-              ref={search}
-              type="search"
-              placeholder="Search PDF tools"
-              value={query}
-              onChange={event => setQuery(event.target.value)}
-            />
-            <kbd aria-hidden="true">Ctrl K</kbd>
-          </label>
-          <ul className="promises">
-            {promises.map(([icon, text]) => (
-              <li key={text}>
-                <Icon name={icon} size={16} />
-                {text}
-              </li>
-            ))}
-          </ul>
+          <div className="hero-copy">
+            <h1>{home.h1}</h1>
+            <p>{home.hero}</p>
+            <form
+              role="search"
+              onSubmit={event => {
+                event.preventDefault();
+                catalogTitle.current?.focus();
+              }}
+            >
+              <label className="searchbox">
+                <Icon name="search" size={18} className="search-icon" />
+                <span className="sr-only">Find a tool</span>
+                <input
+                  ref={search}
+                  type="search"
+                  placeholder="Search tools by name"
+                  value={query}
+                  onChange={event => setQuery(event.target.value)}
+                />
+                <kbd aria-hidden="true">Ctrl K</kbd>
+              </label>
+            </form>
+            <ul className="promises">
+              {promises.map(([icon, text]) => (
+                <li key={text}>
+                  <Icon name={icon} size={16} />
+                  {text}
+                </li>
+              ))}
+            </ul>
+            <a className="hero-catalog-link" href="#catalog">
+              {query.trim() ? 'View search results' : 'Browse all tools'}
+              <Icon name="down" size={16} />
+            </a>
+          </div>
+          <PdfEditorPreview />
         </div>
       </section>
       <section className="start-with" aria-labelledby="start-title">
@@ -99,20 +174,17 @@ export function HomePage({ favorites, toggle, filter, setFilter }) {
           })}
         </div>
       </section>
-      <ContentSections sections={otherSections?.slice(0, 1)} />
-      <section className="content-section">
-        <h2>Popular PDF tools</h2>
-        {popularCopy?.body?.map((paragraph, index) => (
-          <p key={index}>{paragraph}</p>
-        ))}
-        <ToolLinks items={popular} />
-      </section>
       <section id="catalog" aria-labelledby="catalog-title">
         <div className="catalog-heading">
-          <h2 id="catalog-title">{query.trim() ? 'Search results' : 'Tool library'}</h2>
-          <p>
-            {count} {count === 1 ? 'tool' : 'tools'}
-          </p>
+          <h2 id="catalog-title" ref={catalogTitle} tabIndex={-1}>
+            {query.trim() ? 'Search results' : 'Tool library'}
+          </h2>
+          <div className="catalog-meta">
+            <p>
+              {count} {count === 1 ? 'tool' : 'tools'}
+            </p>
+            <a href="#about-pdf-tools">About {brandName}</a>
+          </div>
         </div>
         <div className="filter-nav" role="group" aria-label="Filter tools">
           {['All tools', 'Starred', ...Object.keys(catalog)].map(name => (
@@ -177,8 +249,18 @@ export function HomePage({ favorites, toggle, filter, setFilter }) {
           </div>
         )}
       </section>
-      <ContentSections sections={otherSections?.slice(1)} />
-      <Faq id="common-questions" title={`${brandName} FAQ`} items={home.faq} firstOpen />
+      <div className="home-reading" id="about-pdf-tools" tabIndex={-1}>
+        <ContentSections sections={otherSections?.slice(0, 1)} />
+        <section className="content-section">
+          <h2>Popular PDF tools</h2>
+          {popularCopy?.body?.map((paragraph, index) => (
+            <p key={index}>{paragraph}</p>
+          ))}
+          <ToolLinks items={popular} />
+        </section>
+        <ContentSections sections={otherSections?.slice(1)} />
+        <Faq id="common-questions" title={`${brandName} FAQ`} items={home.faq} firstOpen />
+      </div>
     </>
   );
 }

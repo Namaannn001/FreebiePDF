@@ -6,7 +6,7 @@ import { ContentSections } from './ContentSections.jsx';
 import { Faq } from './Faq.jsx';
 import { PageLinks } from './Links.jsx';
 
-/** Hub page: intro, collection copy, the tools in the hub, and related guides. */
+/** Hub page: tool collection followed by supporting copy, FAQs, and guides. */
 export function HubPage({ page }) {
   const links = toolLinks(page.toolIds);
   const articles = guides.filter(article =>
@@ -16,15 +16,9 @@ export function HubPage({ page }) {
     <article className="editorial">
       <header className="tool-intro">
         <h1>{page.h1}</h1>
-        <p>{page.intro}</p>
       </header>
-      {page.body?.map((paragraph, index) => (
-        <p key={index}>{paragraph}</p>
-      ))}
-      <ContentSections sections={page.sections} />
       {links.length > 0 && (
-        <section className="content-section">
-          <h2>PDF tools</h2>
+        <section aria-label="PDF tools">
           <ul className="hub-tools">
             {links.map(([id, anchor]) => (
               <li key={id}>
@@ -35,6 +29,15 @@ export function HubPage({ page }) {
           </ul>
         </section>
       )}
+      {(page.intro || page.body?.length > 0) && (
+        <div className="content-section">
+          {page.intro && <p>{page.intro}</p>}
+          {page.body?.map((paragraph, index) => (
+            <p key={index}>{paragraph}</p>
+          ))}
+        </div>
+      )}
+      <ContentSections sections={page.sections} />
       <Faq items={page.faq} />
       {articles.length > 0 && (
         <section className="content-section">

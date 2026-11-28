@@ -87,7 +87,7 @@ async function store(cache,url){
   let error;
   for(let attempt=0;attempt<4;attempt++){
     try{
-      const response=await fetch(url,{cache:'reload'});
+      const response=await fetch(url,{cache:'reload',priority:'low'});
       if(!response.ok)throw new Error('Could not cache '+url+' ('+response.status+')');
       const body=await clean(response);
       if(body.redirected)throw new Error('Could not cache '+url);
